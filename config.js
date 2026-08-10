@@ -12,5 +12,6 @@ const GAME_EVENTS = {
   STATE_UPDATED: 'td:state_updated',   // Sent by A -> Read by B to redraw frame
   TOWER_PLACED: 'td:tower_placed',     // Sent by B -> Processed by A to deduct money & spawn tower
   ENEMY_DAMAGED: 'td:enemy_damaged',   // Sent by A -> Used by B to display damage numbers
+  ENEMY_SPAWNED: 'td:enemy_spawned',   // Sent by A -> Used by B to show spawn effects
   WAVE_STARTED: 'td:wave_started'      // Sent by B -> Processed by A to start timer
 };
