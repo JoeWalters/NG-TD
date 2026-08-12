@@ -38,7 +38,7 @@
     normal: { hp: ENEMY_HP, speed: ENEMY_SPEED, radius: ENEMY_RADIUS, color: ENEMY_COLOR },
     scout:  { hp: ENEMY_HP * 0.5, speed: ENEMY_SPEED * 2, radius: ENEMY_RADIUS, color: '#22d3ee' },
     tank:   { hp: ENEMY_HP * 4,  speed: ENEMY_SPEED * 0.6, radius: 18, color: '#a16207' },
-    boss:   { hp: ENEMY_HP * 20, speed: ENEMY_SPEED * 0.5, radius: 26, color: '#dc2626' }
+    boss:   { hp: ENEMY_HP * 15, speed: ENEMY_SPEED * 0.5, radius: 26, color: '#dc2626' }
   };
 
   // Kill rewards per enemy type (base KILL_REWARD is for normal creeps).
@@ -295,6 +295,10 @@
         e.y += (dy / d) * step;
       }
 
+      // Normalized heading for the renderer's facing indicator.
+      e.vx = dx / d;
+      e.vy = dy / d;
+
       e.hpPercent = (e.hp / e.maxHp) * 100;
     }
   }
@@ -442,6 +446,8 @@
           hp: e.hp,
           maxHp: e.maxHp,
           hpPercent: e.hpPercent,
+          vx: e.vx || 0,
+          vy: e.vy || 0,
           slow: e.slowTimer > 0
         };
       })

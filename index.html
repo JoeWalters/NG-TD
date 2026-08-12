@@ -18,7 +18,7 @@
 
     body {
       margin: 0;
-      background: var(--bg);
+      background: radial-gradient(1200px 800px at 50% 0%, #16233f 0%, var(--bg) 60%);
       color: var(--text);
       font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
       min-height: 100vh;
@@ -93,17 +93,20 @@
       padding: 4px 10px;
       cursor: pointer;
       font-size: 13px;
+      transition: all 0.15s ease;
     }
 
+    .type-btn:hover { border-color: var(--accent); color: var(--accent); transform: translateY(-1px); }
     .type-btn.active {
       border-color: var(--accent);
       color: var(--accent);
       background: #0c2436;
+      box-shadow: inset 0 0 0 1px rgba(56, 189, 248, 0.3);
     }
 
     /* ---- Start Wave button ---- */
     #start-wave {
-      background: var(--accent);
+      background: linear-gradient(180deg, #4cc2fa, var(--accent));
       color: #0b1a2a;
       border: none;
       border-radius: 6px;
@@ -111,9 +114,11 @@
       font-size: 14px;
       font-weight: 600;
       cursor: pointer;
+      box-shadow: 0 2px 8px rgba(56, 189, 248, 0.35);
+      transition: filter 0.15s ease, transform 0.15s ease;
     }
 
-    #start-wave:hover { filter: brightness(1.1); }
+    #start-wave:hover { filter: brightness(1.12); transform: translateY(-1px); }
 
     /* ---- Control buttons (pause / speed) ---- */
     #controls {
@@ -144,6 +149,7 @@
       padding: 8px;
       line-height: 0;
       position: relative;
+      box-shadow: 0 0 24px rgba(56, 189, 248, 0.18), 0 8px 24px rgba(0, 0, 0, 0.35);
     }
 
     /* ---- Game over overlay ---- */

@@ -92,15 +92,39 @@
         if (cell === 2) fill = '#334155'; // blocked/building tile
         else if (cell === 1) fill = '#3b2f1f'; // path
 
-        ctx.fillStyle = fill;
+        // Draw the base tile fill with a slight vertical gradient for depth.
+        const grad = ctx.createLinearGradient(0, y, 0, y + TILE_PY);
+        grad.addColorStop(0, fill);
+        grad.addColorStop(1, shade(fill, -14));
+        ctx.fillStyle = grad;
         ctx.fillRect(x, y, TILE_PX, TILE_PY);
 
-        // subtle grid lines
-        ctx.strokeStyle = '#1e293b';
-        ctx.lineWidth = 1;
-        ctx.strokeRect(x + 0.5, y + 0.5, TILE_PX - 1, TILE_PY - 1);
+        // Path tiles get a subtle inner highlight + darker edges so the lane
+        // reads clearly against the empty ground.
+        if (isPath) {
+          ctx.fillStyle = 'rgba(255,255,255,0.05)';
+          ctx.fillRect(x, y, TILE_PX, 3);
+          ctx.strokeStyle = 'rgba(0,0,0,0.25)';
+          ctx.lineWidth = 1;
+          ctx.strokeRect(x + 0.5, y + 0.5, TILE_PX - 1, TILE_PY - 1);
+        } else {
+          // subtle grid lines
+          ctx.strokeStyle = '#1e293b';
+          ctx.lineWidth = 1;
+          ctx.strokeRect(x + 0.5, y + 0.5, TILE_PX - 1, TILE_PY - 1);
+        }
       }
     }
+  }
+
+  // Darken (negative) or lighten (positive) a hex color by a percentage.
+  function shade(hex, percent) {
+    const num = parseInt(hex.replace('#', ''), 16);
+    const amt = Math.round(2.55 * percent);
+    const r = Math.min(255, Math.max(0, (num >> 16) + amt));
+    const g = Math.min(255, Math.max(0, ((num >> 8) & 0xff) + amt));
+    const b = Math.min(255, Math.max(0, (num & 0xff) + amt));
+    return 'rgb(' + r + ',' + g + ',' + b + ')';
   }
 
   // ---------- Tower rendering ----------
@@ -174,13 +198,72 @@
       roundRect(x + 6, y + 6, TILE_PX - 12, TILE_PY - 12, 8);
       ctx.fill();
 
-      // barrel / detail line
-      ctx.strokeStyle = '#0f172a';
-      ctx.lineWidth = 3;
-      ctx.beginPath();
-      ctx.moveTo(x + TILE_PX * 0.5, y + TILE_PY * 0.5);
-      ctx.lineTo(x + TILE_PX * 0.9, y + TILE_PY * 0.5);
-      ctx.stroke();
+      // Inner panel for contrast + a soft rim light on the top edge.
+      ctx.fillStyle = 'rgba(255,255,255,0.10)';
+      ctx.fillRect(x + 8, y + 8, TILE_PX - 16, 3);
+      ctx.fillStyle = 'rgba(0,0,0,0.20)';
+      ctx.fillRect(x + 8, y + TILE_PY - 11, TILE_PX - 16, 3);
+
+      // Type-specific silhouette so each tower reads at a glance.
+      const cx = x + TILE_PX * 0.5;
+      const cy = y + TILE_PY * 0.5;
+      ctx.fillStyle = 'rgba(0,0,0,0.25)';
+      if (t.type === 'sniper') {
+        // Long barrel pointing up-right
+        ctx.save();
+        ctx.translate(cx, cy);
+        ctx.rotate(-0.5);
+        ctx.fillRect(2, -3, TILE_PX * 0.62, 6);
+        ctx.restore();
+        ctx.fillStyle = color;
+        ctx.beginPath();
+        ctx.arc(cx + 10, cy - 8, 5, 0, Math.PI * 2);
+        ctx.fill();
+      } else if (t.type === 'cannon') {
+        // Twin barrels
+        ctx.fillRect(6, cy - 8, TILE_PX * 0.55, 5);
+        ctx.fillRect(6, cy + 3, TILE_PX * 0.55, 5);
+        ctx.fillStyle = color;
+        ctx.beginPath();
+        ctx.arc(cx, cy, 10, 0, Math.PI * 2);
+        ctx.fill();
+      } else if (t.type === 'splash') {
+        // Rotating fan of blades
+        for (let i = 0; i < 4; i++) {
+          const a = i * Math.PI / 2;
+          ctx.fillRect(cx - 2, cy - 12, 4, 24);
+          ctx.save();
+          ctx.translate(cx, cy);
+          ctx.rotate(a);
+          ctx.fillRect(-2, -12, 4, 24);
+          ctx.restore();
+        }
+        ctx.fillStyle = color;
+        ctx.beginPath();
+        ctx.arc(cx, cy, 5, 0, Math.PI * 2);
+        ctx.fill();
+      } else if (t.type === 'frost') {
+        // Snowflake: 3 crossed lines
+        for (let i = 0; i < 3; i++) {
+          ctx.save();
+          ctx.translate(cx, cy);
+          ctx.rotate(i * Math.PI / 3);
+          ctx.fillRect(-1.5, -11, 3, 22);
+          ctx.restore();
+        }
+        ctx.fillStyle = color;
+        ctx.beginPath();
+        ctx.arc(cx, cy, 6, 0, Math.PI * 2);
+        ctx.fill();
+      } else {
+        // Basic: single forward barrel
+        ctx.fillStyle = 'rgba(0,0,0,0.25)';
+        ctx.fillRect(cx - 3, cy - 2, TILE_PX * 0.44, 5);
+        ctx.fillStyle = color;
+        ctx.beginPath();
+        ctx.arc(cx, cy, 9, 0, Math.PI * 2);
+        ctx.fill();
+      }
 
       // Level badge (top-right corner)
       const lv = t.level || 1;
@@ -252,6 +335,28 @@
       ctx.arc(x, y, r, 0, Math.PI * 2);
       ctx.fill();
 
+      // A darker rim gives creeps a bit of depth.
+      ctx.strokeStyle = 'rgba(0,0,0,0.35)';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
+      // Facing indicator: a small "eye" dot that shows the creep's heading
+      // (uses the velocity if the snapshot provides one).
+      let vx = 0;
+      let vy = -1;
+      if (typeof e.vx === 'number' && typeof e.vy === 'number' &&
+          (Math.abs(e.vx) + Math.abs(e.vy)) > 0.01) {
+        const len = Math.hypot(e.vx, e.vy);
+        vx = e.vx / len;
+        vy = e.vy / len;
+      }
+      const eyeX = x + vx * r * 0.45;
+      const eyeY = y + vy * r * 0.45;
+      ctx.fillStyle = 'rgba(0,0,0,0.55)';
+      ctx.beginPath();
+      ctx.arc(eyeX, eyeY, Math.max(2, r * 0.18), 0, Math.PI * 2);
+      ctx.fill();
+
       if (e.slow) {
         // A small icy ring around slowed creeps.
         ctx.strokeStyle = '#22d3ee';
@@ -275,10 +380,16 @@
         const barH = 4;
         const bx = x - barW / 2;
         const by = y - r - 8;
-        ctx.fillStyle = 'rgba(15,23,42,0.7)';
-        ctx.fillRect(bx, by, barW, barH);
+        // Dark backing + border so the bar reads on any tile.
+        ctx.fillStyle = 'rgba(15,23,42,0.8)';
+        ctx.fillRect(bx - 1, by - 1, barW + 2, barH + 2);
         ctx.fillStyle = '#4ade80';
         ctx.fillRect(bx, by, barW * frac, barH);
+        // Bosses get a gold health bar so they stand out.
+        if (e.type === 'boss') {
+          ctx.fillStyle = '#f59e0b';
+          ctx.fillRect(bx, by, barW * frac, barH);
+        }
       }
     }
   }
