@@ -11,6 +11,7 @@
   const cashEl = document.getElementById('cash');
   const livesEl = document.getElementById('lives');
   const waveEl = document.getElementById('wave');
+  const nextWaveEl = document.getElementById('next-wave');
 
   // ---------- Local display-only state (never touches game state) ----------
   // These are purely cosmetic and owned by the renderer.
@@ -18,6 +19,8 @@
     cash: 0,
     lives: 0,
     wave: 0,
+    nextWave: [],   // enemy-type composition of the upcoming wave
+    towerTypes: {}, // { type: {range, cost, ...} } for placement previews
     grid: [],       // tile types, row-major: [row][col] or flat [row*COLS+col]
     path: [],       // list of {row, col} tiles that form the creep path
     towers: [],     // list of {row, col, type, range}
@@ -104,10 +107,44 @@
   const TOWER_COLORS = {
     basic: '#38bdf8',
     sniper: '#a78bfa',
-    cannon: '#f87171'
+    cannon: '#f87171',
+    splash: '#22c55e',
+    frost: '#22d3ee'
   };
 
   function drawTowers() {
+    // Placement preview: show the selected tower's range ring on a hovered
+    // empty tile that is valid to build on.
+    if (display.hoverTile && display.grid.length) {
+      const ht = display.hoverTile;
+      const gi = ht.row * COLS + ht.col;
+      const tileType = display.grid[gi];
+      const occupied = display.towers.some(function (t) {
+        return t.row === ht.row && t.col === ht.col;
+      });
+      const def = display.towerTypes[selectedType];
+      if (tileType === 0 && !occupied && def && typeof def.range === 'number') {
+        const hx = ht.col * TILE_PX;
+        const hy = ht.row * TILE_PY;
+        const hcx = hx + TILE_PX * 0.5;
+        const hcy = hy + TILE_PY * 0.5;
+        const radius = def.range <= 20 ? def.range * TILE_PX : def.range;
+        ctx.fillStyle = 'rgba(56,189,248,0.15)';
+        ctx.strokeStyle = 'rgba(56,189,248,0.6)';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(hcx, hcy, radius, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+        // Ghost of the tower to be placed.
+        ctx.globalAlpha = 0.5;
+        ctx.fillStyle = TOWER_COLORS[selectedType] || '#38bdf8';
+        roundRect(hx + 6, hy + 6, TILE_PX - 12, TILE_PY - 12, 8);
+        ctx.fill();
+        ctx.globalAlpha = 1;
+      }
+    }
+
     for (const t of display.towers) {
       const x = t.col * TILE_PX;
       const y = t.row * TILE_PY;
@@ -144,6 +181,61 @@
       ctx.moveTo(x + TILE_PX * 0.5, y + TILE_PY * 0.5);
       ctx.lineTo(x + TILE_PX * 0.9, y + TILE_PY * 0.5);
       ctx.stroke();
+
+      // Level badge (top-right corner)
+      const lv = t.level || 1;
+      const bx = x + TILE_PX - 12;
+      const by = y + 8;
+      ctx.fillStyle = lv >= 3 ? '#f59e0b' : (lv === 2 ? '#e2b8ff' : '#cbd5e1');
+      ctx.beginPath();
+      ctx.arc(bx, by, 8, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#0f172a';
+      ctx.font = 'bold 9px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(String(lv), bx, by + 0.5);
+
+      // Targeting-mode badge (bottom-right corner): N / F / S
+      const mode = t.targetMode || 'nearest';
+      const modeLetter = mode === 'first' ? 'F' : (mode === 'strong' ? 'S' : 'N');
+      const mx2 = x + TILE_PX - 12;
+      const my2 = y + TILE_PY - 8;
+      ctx.fillStyle = '#0f172a';
+      ctx.beginPath();
+      ctx.arc(mx2, my2, 8, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#fbbf24';
+      ctx.font = 'bold 9px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(modeLetter, mx2, my2 + 0.5);
+
+      // Cooldown fill: a dark ring that refills as the tower recharges.
+      if (typeof t.cooldownFrac === 'number' && t.cooldownFrac > 0) {
+        const frac = Math.max(0, Math.min(1, t.cooldownFrac));
+        ctx.strokeStyle = 'rgba(15,23,42,0.75)';
+        ctx.lineWidth = 4;
+        ctx.beginPath();
+        ctx.arc(x + TILE_PX * 0.5, y + TILE_PY * 0.5, TILE_PX * 0.42, 0, Math.PI * 2 * frac);
+        ctx.stroke();
+      }
+    }
+  }
+
+  // ---------- Muzzle flashes (tower firing feedback) ----------
+  const muzzleFlashes = []; // {x, y, ttl}
+  const MUZZLE_TTL = 6;
+
+  function drawMuzzleFlashes() {
+    for (const m of muzzleFlashes) {
+      const frac = m.ttl / MUZZLE_TTL;
+      ctx.globalAlpha = Math.min(1, frac * 1.5);
+      ctx.fillStyle = '#fde68a';
+      ctx.beginPath();
+      ctx.arc(m.x, m.y, 10 * frac + 2, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalAlpha = 1;
     }
   }
 
@@ -154,10 +246,20 @@
       const y = e.y;
       const r = e.radius || 12;
 
-      ctx.fillStyle = e.color || '#fbbf24';
+      // Slowed creeps get a frosty tint so the slow is visible at a glance.
+      ctx.fillStyle = e.slow ? '#7dd3fc' : (e.color || '#fbbf24');
       ctx.beginPath();
       ctx.arc(x, y, r, 0, Math.PI * 2);
       ctx.fill();
+
+      if (e.slow) {
+        // A small icy ring around slowed creeps.
+        ctx.strokeStyle = '#22d3ee';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(x, y, r + 3, 0, Math.PI * 2);
+        ctx.stroke();
+      }
 
       // Health bar above the creep, based on the current health percentage
       // provided in STATE_UPDATED (hpPercent), falling back to hp/maxHp.
@@ -211,10 +313,58 @@
   }
 
   // ---------- HUD update ----------
+  // Build a short summary of the upcoming wave, e.g. "6 normal · 2 scout".
+  function nextWaveSummary(waveTypes) {
+    if (!waveTypes || waveTypes.length === 0) return '—';
+    const counts = {};
+    for (const t of waveTypes) counts[t] = (counts[t] || 0) + 1;
+    const parts = [];
+    const order = ['normal', 'scout', 'tank', 'boss'];
+    for (const t of order) {
+      if (counts[t]) parts.push(counts[t] + ' ' + t + (counts[t] > 1 ? 's' : ''));
+    }
+    return parts.join(' · ');
+  }
+
   function updateHUD() {
     if (cashEl) cashEl.textContent = String(display.cash);
     if (livesEl) livesEl.textContent = String(display.lives);
     if (waveEl) waveEl.textContent = String(display.wave);
+    if (nextWaveEl) nextWaveEl.textContent = nextWaveSummary(display.nextWave);
+  }
+
+  // ---------- Tower HUD panel ----------
+  // Shows details for the tower under the mouse, if any.
+  function updateTowerHud() {
+    const panel = document.getElementById('tower-hud');
+    if (!panel) return;
+
+    let tower = null;
+    if (display.hoverTile) {
+      tower = display.towers.find(function (t) {
+        return t.row === display.hoverTile.row && t.col === display.hoverTile.col;
+      });
+    }
+
+    if (!tower) {
+      panel.classList.add('hidden');
+      return;
+    }
+
+    const def = display.towerTypes[tower.type];
+    const upgradeCost = def && def.cost != null
+      ? Math.round(def.cost * Math.pow(0.6, tower.level)) // same formula as game_logic
+      : null;
+
+    const el = (id) => document.getElementById(id);
+    el('th-title').textContent = tower.type.toUpperCase();
+    el('th-level').textContent = String(tower.level);
+    el('th-damage').textContent = def ? String(Math.round(def.damage * Math.pow(1.25, tower.level - 1))) : '—';
+    el('th-range').textContent = def ? String(def.range * Math.pow(1.1, tower.level - 1)) : '—';
+    el('th-mode').textContent = String(tower.targetMode || 'nearest');
+    el('th-upgrade').textContent = upgradeCost != null ? String(upgradeCost) : '—';
+
+    panel.classList.remove('hidden');
   }
 
   // ---------- Main render loop ----------
@@ -222,10 +372,12 @@
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     drawGrid();
     drawTowers();
+    drawMuzzleFlashes();
     drawEnemies();
     drawFlashes();
     drawDamageNumbers();
     updateHUD();
+    updateTowerHud();
 
     // tick damage number lifetimes (renderer-local)
     for (let i = display.damageNumbers.length - 1; i >= 0; i--) {
@@ -244,10 +396,23 @@
       }
     }
 
+    // tick muzzle flash lifetimes (renderer-local)
+    for (let i = muzzleFlashes.length - 1; i >= 0; i--) {
+      muzzleFlashes[i].ttl -= 1;
+      if (muzzleFlashes[i].ttl <= 0) {
+        muzzleFlashes.splice(i, 1);
+      }
+    }
+
+    tickBossBanner();
+
     requestAnimationFrame(render);
   }
 
   // ---------- Event listeners ----------
+  // Track each tower's previous cooldownFrac to detect a fresh shot.
+  const lastCooldownFrac = {}; // keyed by tower id (row-col-type)
+
   function onStateUpdated(evt) {
     const s = evt.detail;
     if (!s) return;
@@ -256,10 +421,30 @@
     if (typeof s.cash === 'number') display.cash = s.cash;
     if (typeof s.lives === 'number') display.lives = s.lives;
     if (typeof s.wave === 'number') display.wave = s.wave;
+    if (Array.isArray(s.nextWave)) display.nextWave = s.nextWave;
+    if (s.towerTypes && typeof s.towerTypes === 'object') display.towerTypes = s.towerTypes;
 
     if (s.grid) display.grid = s.grid;
     if (s.path) display.path = s.path;
-    if (s.towers) display.towers = s.towers;
+
+    // Detect firing: a tower's cooldownFrac jumping from low to high means it shot.
+    if (s.towers) {
+      display.towers = s.towers;
+      for (const t of s.towers) {
+        const key = t.row + '-' + t.col + '-' + t.type;
+        const prev = lastCooldownFrac[key] || 0;
+        const cur = typeof t.cooldownFrac === 'number' ? t.cooldownFrac : 0;
+        if (cur > 0.8 && prev <= 0.8) {
+          muzzleFlashes.push({
+            x: (t.col + 0.5) * TILE_PX,
+            y: (t.row + 0.5) * TILE_PY,
+            ttl: MUZZLE_TTL
+          });
+        }
+        lastCooldownFrac[key] = cur;
+      }
+    }
+
     if (s.enemies) display.enemies = s.enemies;
   }
 
@@ -285,7 +470,7 @@
     display.hoverTile = null;
   });
 
-  // ---------- Click -> grid coords -> dispatch build request ----------
+  // ---------- Click -> grid coords -> dispatch build / upgrade request ----------
   canvas.addEventListener('click', function (evt) {
     const rect = canvas.getBoundingClientRect();
     const mx = evt.clientX - rect.left;
@@ -293,9 +478,60 @@
     const tile = tileAt(mx, my);
     if (!tile) return;
 
+    const tower = display.towers.find(function (t) {
+      return t.row === tile.row && t.col === tile.col;
+    });
+
+    if (tower) {
+      // Left-clicking an occupied tile upgrades that tower.
+      window.dispatchEvent(
+        new CustomEvent(GAME_EVENTS.UPGRADE_TOWER, {
+          detail: { row: tile.row, col: tile.col }
+        })
+      );
+    } else {
+      window.dispatchEvent(
+        new CustomEvent(GAME_EVENTS.TOWER_PLACED, {
+          detail: { row: tile.row, col: tile.col, type: selectedType }
+        })
+      );
+    }
+  });
+
+  // ---------- Right-click a tower -> sell ----------
+  canvas.addEventListener('contextmenu', function (evt) {
+    evt.preventDefault();
+    const rect = canvas.getBoundingClientRect();
+    const mx = evt.clientX - rect.left;
+    const my = evt.clientY - rect.top;
+    const tile = tileAt(mx, my);
+    if (!tile) return;
+
+    const tower = display.towers.find(function (t) {
+      return t.row === tile.row && t.col === tile.col;
+    });
+    if (!tower) return;
+
     window.dispatchEvent(
-      new CustomEvent(GAME_EVENTS.TOWER_PLACED, {
-        detail: { row: tile.row, col: tile.col, type: selectedType }
+      new CustomEvent(GAME_EVENTS.SELL_TOWER, {
+        detail: { row: tile.row, col: tile.col }
+      })
+    );
+  });
+
+  // ---------- Keyboard: cycle targeting mode of hovered tower (M key) ----------
+  window.addEventListener('keydown', function (evt) {
+    if (evt.key !== 'm' && evt.key !== 'M') return;
+    const tile = display.hoverTile;
+    if (!tile) return;
+    const tower = display.towers.find(function (t) {
+      return t.row === tile.row && t.col === tile.col;
+    });
+    if (!tower) return;
+
+    window.dispatchEvent(
+      new CustomEvent(GAME_EVENTS.CHANGE_TARGET_MODE, {
+        detail: { row: tile.row, col: tile.col }
       })
     );
   });
@@ -308,19 +544,117 @@
     });
   }
 
+  // ---------- Pause button ----------
+  const pauseBtn = document.getElementById('pause-btn');
+  let pausedLabel = false;
+  if (pauseBtn) {
+    pauseBtn.addEventListener('click', function () {
+      window.dispatchEvent(new CustomEvent(GAME_EVENTS.TOGGLE_PAUSE, { detail: {} }));
+      pausedLabel = !pausedLabel;
+      pauseBtn.textContent = pausedLabel ? '⏸ Paused' : '⏸ Pause';
+    });
+  }
+
+  // ---------- Speed button (cycles 1x -> 2x -> 3x -> 1x) ----------
+  const speedBtn = document.getElementById('speed-btn');
+  const SPEEDS = [1, 2, 3];
+  let speedIndex = 0;
+  if (speedBtn) {
+    speedBtn.addEventListener('click', function () {
+      speedIndex = (speedIndex + 1) % SPEEDS.length;
+      const speed = SPEEDS[speedIndex];
+      speedBtn.textContent = speed + '×';
+      window.dispatchEvent(new CustomEvent(GAME_EVENTS.SET_SPEED, { detail: { speed: speed } }));
+    });
+  }
+
   // ---------- Tower type selector (renderer UI concern) ----------
+  // The order of TOWER_ORDER must match the hotkeys 1..5.
+  const TOWER_ORDER = ['basic', 'sniper', 'cannon', 'splash', 'frost'];
+
+  function selectType(type) {
+    selectedType = type;
+    document.querySelectorAll('#tower-types .type-btn').forEach(function (b) {
+      b.classList.toggle('active', b.getAttribute('data-type') === type);
+    });
+  }
+
   document.querySelectorAll('#tower-types .type-btn').forEach(function (btn) {
     btn.addEventListener('click', function () {
-      selectedType = btn.getAttribute('data-type') || 'basic';
-      document.querySelectorAll('#tower-types .type-btn').forEach(function (b) {
-        b.classList.toggle('active', b === btn);
-      });
+      selectType(btn.getAttribute('data-type') || 'basic');
     });
   });
+
+  // Hotkeys 1..5 select the tower type in TOWER_ORDER (mirrors the HUD buttons).
+  window.addEventListener('keydown', function (evt) {
+    const idx = ['1', '2', '3', '4', '5'].indexOf(evt.key);
+    if (idx < 0 || idx >= TOWER_ORDER.length) return;
+    if (evt.target && /INPUT|TEXTAREA/.test(evt.target.tagName)) return;
+    selectType(TOWER_ORDER[idx]);
+  });
+
+  // ---------- Boss banner ----------
+  let bossBannerEl = null;
+  let bossBannerTimer = 0;
+  const BOSS_BANNER_TTL = 90; // frames
+  function onBossSpawned() {
+    if (!bossBannerEl) bossBannerEl = document.getElementById('boss-banner');
+    if (bossBannerEl) bossBannerEl.classList.remove('hidden');
+    bossBannerTimer = BOSS_BANNER_TTL;
+  }
+  // Tick the boss banner off after its TTL.
+  function tickBossBanner() {
+    if (bossBannerTimer > 0) {
+      bossBannerTimer--;
+      if (bossBannerTimer === 0 && bossBannerEl) bossBannerEl.classList.add('hidden');
+    }
+  }
+
+  // ---------- Game over overlay ----------
+  const gameOverEl = document.getElementById('game-over');
+  let gameOverShown = false;
+
+  function onGameOver(evt) {
+    const d = evt.detail || {};
+    if (gameOverEl && !gameOverShown) {
+      gameOverShown = true;
+      const waveLabel = document.getElementById('game-over-wave');
+      if (waveLabel) waveLabel.textContent = String(d.wave != null ? d.wave : 0);
+      gameOverEl.classList.remove('hidden');
+    }
+  }
+
+  // ---------- Restart (Play Again) ----------
+  function resetDisplayState() {
+    // Clear renderer-local state so the HUD/panel reflect the fresh game.
+    display.cash = 0;
+    display.lives = 0;
+    display.wave = 0;
+    display.nextWave = [];
+    display.towers = [];
+    display.enemies = [];
+    display.hoverTile = null;
+  }
+
+  function onRestart() {
+    resetDisplayState();
+    if (gameOverEl) gameOverEl.classList.add('hidden');
+    gameOverShown = false;
+  }
+
+  const playAgainBtn = document.getElementById('play-again');
+  if (playAgainBtn) {
+    playAgainBtn.addEventListener('click', function () {
+      window.dispatchEvent(new CustomEvent(GAME_EVENTS.RESTART, { detail: {} }));
+    });
+  }
 
   // ---------- Wire up events ----------
   window.addEventListener(GAME_EVENTS.STATE_UPDATED, onStateUpdated);
   window.addEventListener(GAME_EVENTS.ENEMY_DAMAGED, onEnemyDamaged);
+  window.addEventListener(GAME_EVENTS.GAME_OVER, onGameOver);
+  window.addEventListener(GAME_EVENTS.BOSS_SPAWNED, onBossSpawned);
+  window.addEventListener(GAME_EVENTS.RESTART, onRestart);
 
   // ---------- Start the render loop ----------
   requestAnimationFrame(render);
