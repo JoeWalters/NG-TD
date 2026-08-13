@@ -7,6 +7,15 @@ const CONFIG = {
   STARTING_LIVES: 20
 };
 
+// One-phrase role for each tower, used in onboarding tooltips and the HUD.
+const TOWER_ROLES = {
+  basic: 'Cheap all-rounder. Reliable single-target damage.',
+  sniper: 'Long range. Picks off one target at a time, high damage.',
+  cannon: 'Big hits. Slow, heavy single-target damage.',
+  splash: 'Area damage. Hits every creep near its target.',
+  frost: 'Slows enemies. Low damage, keeps the lane safe.'
+};
+
 // Standardized Event Names both A and B must use
 const GAME_EVENTS = {
   STATE_UPDATED: 'td:state_updated',   // Sent by A -> Read by B to redraw frame
