@@ -4,7 +4,6 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>NG-TD — Tower Defense</title>
-  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect x='10' y='30' width='80' height='60' fill='%2338bdf8'/%3E%3Crect x='10' y='22' width='18' height='10' fill='%2338bdf8'/%3E%3Crect x='72' y='22' width='18' height='10' fill='%2338bdf8'/%3E%3Crect x='30' y='14' width='14' height='18' fill='%2338bdf8'/%3E%3Crect x='56' y='14' width='14' height='18' fill='%2338bdf8'/%3E%3Crect x='38' y='52' width='24' height='38' fill='%230f172a'/%3E%3Crect x='38' y='52' width='24' height='8' fill='%23fbbf24'/%3E%3C/svg%3E" />
   <style>
     :root {
       --bg: #0f172a;
@@ -26,64 +25,21 @@
       display: flex;
       flex-direction: column;
       align-items: center;
-      justify-content: flex-start;
-      gap: 12px;
-      padding: 12px;
+      justify-content: center;
+      gap: 16px;
+      padding: 16px;
     }
 
-    /* ---- Brand header ---- */
-    #brand {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      line-height: 1;
-    }
-
-    .brand-mark {
-      font-size: 26px;
-      filter: drop-shadow(0 0 6px rgba(56, 189, 248, 0.6));
-    }
-
-    .brand-text {
-      display: flex;
-      flex-direction: column;
-      gap: 1px;
-    }
-
-    .brand-title {
-      font-size: 12px;
-      font-weight: 800;
-      letter-spacing: 0.08em;
-      color: var(--accent);
-    }
-
-
-    /* ---- Top bar (brand + stats) ---- */
+    /* ---- Top bar HUD ---- */
     #hud {
       display: flex;
-      flex-wrap: wrap;
       align-items: center;
-      justify-content: center;
-      gap: 16px;
+      gap: 24px;
       background: var(--panel);
       border: 1px solid var(--panel-border);
       border-radius: 8px;
       padding: 10px 18px;
-      max-width: 100%;
-    }
-
-    /* ---- Interactive dock (tower types / start / controls) ---- */
-    #dock {
-      display: flex;
-      flex-wrap: wrap;
-      align-items: center;
-      justify-content: center;
-      gap: 16px;
-      background: var(--panel);
-      border: 1px solid var(--panel-border);
-      border-radius: 8px;
-      padding: 10px 18px;
-      max-width: 100%;
+      min-width: 640px;
     }
 
     .stat {
@@ -194,23 +150,6 @@
       line-height: 0;
       position: relative;
       box-shadow: 0 0 24px rgba(56, 189, 248, 0.18), 0 8px 24px rgba(0, 0, 0, 0.35);
-      width: fit-content;
-      max-width: 100%;
-    }
-
-    #game-canvas {
-      display: block;
-      background: var(--bg);
-      border-radius: 4px;
-      image-rendering: pixelated;
-      /* Fixed internal resolution (640x640) is preserved; CSS scales it
-         down to fit small screens while keeping the drawing crisp. */
-      width: 100%;
-      height: auto;
-      max-width: 640px;
-      max-height: 640px;
-      touch-action: manipulation; /* no double-tap zoom on mobile */
-      -webkit-tap-highlight-color: transparent;
     }
 
     /* ---- Game over overlay ---- */
@@ -265,7 +204,6 @@
       border-radius: 8px;
       padding: 10px 14px;
       min-width: 200px;
-      max-width: calc(100% - 24px);
       line-height: 1.35;
       pointer-events: none;
     }
@@ -297,31 +235,6 @@
       padding-top: 6px;
     }
 
-    .th-role {
-      margin-top: 6px;
-      font-size: 11px;
-      color: var(--muted);
-      line-height: 1.3;
-      border-top: 1px solid var(--panel-border);
-      padding-top: 6px;
-    }
-
-    /* Mobile action buttons shown in the tower HUD panel on touch devices. */
-    #tower-hud .th-actions { display: none; margin-top: 6px; gap: 6px; }
-    #tower-hud .th-actions.show { display: flex; }
-    #tower-hud .th-action {
-      flex: 1;
-      background: var(--bg);
-      color: var(--text);
-      border: 1px solid var(--panel-border);
-      border-radius: 6px;
-      padding: 6px 8px;
-      font-size: 12px;
-      cursor: pointer;
-      pointer-events: auto;
-    }
-    #tower-hud .th-action:active { border-color: var(--accent); color: var(--accent); }
-
     /* ---- Boss banner ---- */
     #boss-banner {
       position: absolute;
@@ -341,229 +254,16 @@
 
     #boss-banner.hidden { display: none; }
 
-    /* ---- Mobile / small-screen adjustments ---- */
-    @media (max-width: 700px) {
-      body { padding: 8px; gap: 10px; padding-bottom: 150px; }
-      /* Slim top bar: brand + stats only. */
-      #hud { gap: 10px; padding: 8px 10px; }
-      .stat .value { font-size: 18px; }
-      .stat .label { font-size: 12px; }
-      .stat .value.next-wave { font-size: 12px; min-width: 0; }
-      .hud-sep { display: none; }
-      #canvas-wrap { padding: 6px; }
-      #tower-hud { left: 8px; bottom: 8px; padding: 8px 10px; font-size: 12px; min-width: 180px; }
-      .th-hint { font-size: 10px; }
-
-      /* Brand sits inline with the stats on the slim top bar. */
-      #brand { gap: 4px; }
-      .brand-title { font-size: 10px; }
-      .brand-mark { font-size: 22px; }
-
-      /* Dock becomes a fixed bottom bar that fills the space below the grid. */
-      #dock {
-        position: fixed;
-        left: 0; right: 0; bottom: 0;
-        width: 100%;
-        justify-content: center;
-        gap: 10px;
-        padding: 10px 10px calc(10px + env(safe-area-inset-bottom));
-        border-radius: 0;
-        border-left: none;
-        border-right: none;
-        border-bottom: none;
-        box-shadow: 0 -6px 20px rgba(0, 0, 0, 0.4);
-        z-index: 20;
-      }
-      #tower-types .type-btn { padding: 4px 8px; font-size: 12px; }
-      #start-wave { font-size: 13px; padding: 6px 12px; }
-      .ctl-btn { padding: 5px 10px; font-size: 12px; }
-    }
-
-    /* ---- Onboarding how-to overlay ---- */
-    #howto {
-      position: fixed;
-      inset: 0;
-      z-index: 50;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      background: rgba(10, 16, 30, 0.86);
-      padding: 16px;
-    }
-
-    #howto.hidden { display: none; }
-
-    .howto-card {
-      background: var(--panel);
-      border: 1px solid var(--panel-border);
-      border-radius: 12px;
-      padding: 22px 24px;
-      max-width: 420px;
-      width: 100%;
-      line-height: 1.5;
-      box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
-    }
-
-    .howto-card h2 {
-      margin: 0 0 12px;
-      font-size: 20px;
-      color: var(--accent);
-      letter-spacing: 0.06em;
-    }
-
-    .howto-card ol {
-      margin: 0 0 14px;
-      padding-left: 20px;
-      color: var(--text);
-      font-size: 14px;
-    }
-
-    .howto-card ol li { margin-bottom: 8px; }
-
-    .howto-card .howto-tip {
-      font-size: 12px;
-      color: var(--muted);
-      border-top: 1px solid var(--panel-border);
-      padding-top: 10px;
-      margin-bottom: 14px;
-    }
-
-    #howto-start {
+    #game-canvas {
       display: block;
-      width: 100%;
-      background: linear-gradient(180deg, #4cc2fa, var(--accent));
-      color: #0b1a2a;
-      border: none;
-      border-radius: 8px;
-      padding: 10px 16px;
-      font-size: 15px;
-      font-weight: 700;
-      cursor: pointer;
-      box-shadow: 0 2px 10px rgba(56, 189, 248, 0.35);
-    }
-
-    #howto-start:hover { filter: brightness(1.12); }
-
-    /* ---- Tower type button role tooltip ---- */
-    .type-btn { position: relative; }
-
-    .type-tip {
-      position: absolute;
-      bottom: calc(100% + 6px);
-      left: 50%;
-      transform: translateX(-50%);
-      width: 190px;
-      background: rgba(15, 23, 42, 0.97);
-      border: 1px solid var(--panel-border);
-      border-radius: 6px;
-      padding: 6px 9px;
-      font-size: 11px;
-      color: var(--text);
-      line-height: 1.35;
-      pointer-events: none;
-      opacity: 0;
-      transition: opacity 0.15s ease;
-      z-index: 30;
-      text-align: center;
-      box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
-    }
-
-    .type-btn:hover .type-tip { opacity: 1; }
-
-    /* On mobile the dock is fixed at the bottom, so flip the tooltip above. */
-    @media (max-width: 700px) {
-      .type-tip { width: 150px; bottom: calc(100% + 8px); }
-    }
-
-    /* ---- Income toast (wave-clear feedback) ---- */
-    #toast {
-      position: fixed;
-      top: 74px;
-      left: 50%;
-      transform: translateX(-50%) translateY(-8px);
-      background: rgba(15, 23, 42, 0.95);
-      border: 1px solid #22c55e;
-      border-radius: 8px;
-      padding: 8px 16px;
-      font-size: 14px;
-      font-weight: 600;
-      color: #22c55e;
-      box-shadow: 0 4px 18px rgba(0, 0, 0, 0.45);
-      opacity: 0;
-      transition: opacity 0.2s ease, transform 0.2s ease;
-      pointer-events: none;
-      z-index: 40;
-      white-space: nowrap;
-    }
-
-    #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
-
-    /* ---- Boss choice modal ---- */
-    #boss-choice {
-      position: fixed;
-      inset: 0;
-      z-index: 60;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      background: rgba(10, 16, 30, 0.86);
-      padding: 16px;
-    }
-
-    #boss-choice.hidden { display: none; }
-
-    .bc-card {
-      background: var(--panel);
-      border: 1px solid #dc2626;
-      border-radius: 12px;
-      padding: 20px 22px;
-      max-width: 400px;
-      width: 100%;
-      line-height: 1.4;
-      box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
-    }
-
-    .bc-card h2 {
-      margin: 0 0 6px;
-      font-size: 18px;
-      color: #f87171;
-      letter-spacing: 0.06em;
-    }
-
-    .bc-card .bc-sub {
-      margin: 0 0 14px;
-      font-size: 12px;
-      color: var(--muted);
-    }
-
-    .bc-option {
-      display: block;
-      width: 100%;
-      text-align: left;
       background: var(--bg);
-      color: var(--text);
-      border: 1px solid var(--panel-border);
-      border-radius: 8px;
-      padding: 10px 12px;
-      margin-bottom: 8px;
-      cursor: pointer;
-      font-size: 13px;
-      transition: border-color 0.15s ease;
+      border-radius: 4px;
+      image-rendering: pixelated;
     }
-
-    .bc-option strong { color: var(--accent); display: block; margin-bottom: 2px; }
-    .bc-option:hover { border-color: #f87171; }
   </style>
 </head>
 <body>
   <header id="hud">
-    <div id="brand">
-      <span class="brand-mark">🏰</span>
-      <span class="brand-text">
-        <span class="brand-title">NG</span>
-        <span class="brand-title">TD</span>
-      </span>
-    </div>
     <div class="stat">
       <span class="label">Cash</span>
       <span class="value" id="cash">0</span>
@@ -580,15 +280,13 @@
       <span class="label">Next</span>
       <span class="value next-wave" id="next-wave">—</span>
     </div>
-  </header>
-
-  <div id="dock">
+    <span class="hud-sep"></span>
     <div id="tower-types">
-      <button class="type-btn active" data-type="basic">Basic<span class="type-tip">Cheap all-rounder. Reliable single-target damage.</span></button>
-      <button class="type-btn" data-type="sniper">Sniper<span class="type-tip">Long range. Picks off one target at a time, high damage.</span></button>
-      <button class="type-btn" data-type="cannon">Cannon<span class="type-tip">Big hits. Slow, heavy single-target damage.</span></button>
-      <button class="type-btn" data-type="splash">Splash<span class="type-tip">Area damage. Hits every creep near its target.</span></button>
-      <button class="type-btn" data-type="frost">Frost<span class="type-tip">Slows enemies. Low damage, keeps the lane safe.</span></button>
+      <button class="type-btn active" data-type="basic">Basic</button>
+      <button class="type-btn" data-type="sniper">Sniper</button>
+      <button class="type-btn" data-type="cannon">Cannon</button>
+      <button class="type-btn" data-type="splash">Splash</button>
+      <button class="type-btn" data-type="frost">Frost</button>
     </div>
     <span class="hud-sep"></span>
     <button id="start-wave">Start Wave</button>
@@ -597,7 +295,7 @@
       <button class="ctl-btn" id="pause-btn">⏸ Pause</button>
       <button class="ctl-btn" id="speed-btn">1×</button>
     </div>
-  </div>
+  </header>
 
   <div id="canvas-wrap">
     <canvas id="game-canvas" width="640" height="640"></canvas>
@@ -608,46 +306,13 @@
       <div class="th-row"><span class="th-label">Rng</span><span class="th-value" id="th-range">—</span></div>
       <div class="th-row"><span class="th-label">Mode</span><span class="th-value" id="th-mode">—</span></div>
       <div class="th-row"><span class="th-label">Upg</span><span class="th-value" id="th-upgrade">—</span></div>
-      <div class="th-role" id="th-role"></div>
-      <div class="th-actions" id="th-actions">
-        <button class="th-action" id="th-sell">Sell</button>
-        <button class="th-action" id="th-mode-btn">Mode</button>
-      </div>
-      <div class="th-hint">Click: upgrade · Right-click: sell · M: cycle mode</div>
+      <div class="th-hint">L-click: upgrade · R-click: sell · M: cycle mode</div>
     </div>
     <div id="boss-banner" class="hidden">⚠ BOSS</div>
     <div id="game-over" class="hidden">
       <div class="go-title">Game Over</div>
       <div class="go-sub">Reached wave <span id="game-over-wave">0</span></div>
       <button id="play-again">Play Again</button>
-    </div>
-  </div>
-
-  <!-- Income toast: transient "+$X" feedback shown when a wave is cleared. -->
-  <div id="toast"></div>
-
-  <!-- Boss-choice modal: appears before a boss wave so the player can pick a modifier. -->
-  <div id="boss-choice" class="hidden">
-    <div class="bc-card">
-      <h2>⚠ Boss Wave Incoming</h2>
-      <p class="bc-sub">Pick a modifier to shape the fight:</p>
-      <div id="bc-options"></div>
-    </div>
-  </div>
-
-  <!-- Onboarding: shown once on first load; dismissible via Start Playing. -->
-  <div id="howto">
-    <div class="howto-card">
-      <h2>How to Play</h2>
-      <ol>
-        <li>Tap or click an <strong>empty tile</strong> to place a tower.</li>
-        <li>Creeps follow the <strong>yellow path</strong> — build along it.</li>
-        <li>Click a tower to <strong>upgrade</strong>, right-click to <strong>sell</strong>.</li>
-        <li>Hit <strong>Start Wave</strong> to send the next wave.</li>
-        <li>Keep <strong>Lives</strong> above 0 — leaks cost one life each.</li>
-      </ol>
-      <div class="howto-tip">💡 Frost slows creeps; Splash deals area damage — pair them for a frosty combo.</div>
-      <button id="howto-start">Start Playing</button>
     </div>
   </div>
 
