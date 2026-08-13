@@ -7,6 +7,15 @@ const CONFIG = {
   STARTING_LIVES: 20
 };
 
+// One-phrase role for each tower, used in onboarding tooltips and the HUD.
+const TOWER_ROLES = {
+  basic: 'Cheap all-rounder. Reliable single-target damage.',
+  sniper: 'Long range. Picks off one target at a time, high damage.',
+  cannon: 'Big hits. Slow, heavy single-target damage.',
+  splash: 'Area damage. Hits every creep near its target.',
+  frost: 'Slows enemies. Low damage, keeps the lane safe.'
+};
+
 // Standardized Event Names both A and B must use
 const GAME_EVENTS = {
   STATE_UPDATED: 'td:state_updated',       // Sent by A -> Read by B to redraw frame
@@ -21,5 +30,8 @@ const GAME_EVENTS = {
   RESTART: 'td:restart',                   // Sent by B -> Processed by A to reset the game
   ENEMY_SPAWNED: 'td:enemy_spawned',       // Sent by A -> Used by B for spawn feedback
   BOSS_SPAWNED: 'td:boss_spawned',         // Sent by A -> Used by B to show the boss banner
+  BOSS_MODIFIER_REQUEST: 'td:boss_modifier_request', // Sent by A -> B shows boss-choice modal
+  BOSS_MODIFIER: 'td:boss_modifier',       // Sent by B -> A applies the chosen boss modifier
+  WAVE_CLEARED: 'td:wave_cleared',         // Sent by A -> B shows the income toast
   GAME_OVER: 'td:game_over'                // Sent by A -> Used by B to show the game-over overlay
 };

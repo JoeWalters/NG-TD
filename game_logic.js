@@ -53,6 +53,10 @@
   const SLOW_FACTOR = 0.4;   // creeps move at 40% speed while slowed
   const SLOW_DURATION = 2.0; // seconds the slow lasts per application
 
+  // Frost/splash combo: a splash tower deals bonus damage to creeps that are
+  // currently frosted (slowed), rewarding players who pair the two towers.
+  const FROST_SPLASH_BONUS = 1.5; // multiplier applied to splash hits on frosted creeps
+
   const ROWS = CONFIG.GRID_ROWS;
   const COLS = CONFIG.GRID_COLS;
   const TILE = CONFIG.TILE_SIZE;
@@ -160,6 +164,18 @@
   let spawnTimer = 0;    // seconds until the next spawn
   let waveActive = false;
   let spawnedThisWave = 0; // how many enemies have spawned this wave
+  // Boss-choice modifier: id of the chosen modifier for the next boss wave,
+  // or null when none has been picked yet.
+  let bossModifier = null;
+
+  // Boss-choice modifiers offered before a boss wave. Each option tweaks the
+  // upcoming boss encounter in a distinct way.
+  const BOSS_MODIFIERS = [
+    { id: 'cash',   label: 'Extra Cash',   desc: '+$60 now to spend on defenses.', cashBonus: 60 },
+    { id: 'frail',  label: 'Frail Boss',   desc: 'The boss has 60% HP this wave.', hpMult: 0.6, rewardMult: 1 },
+    { id: 'bounty', label: 'Risky Bounty', desc: 'The boss has 200% HP but pays double.', hpMult: 2.0, rewardMult: 2 }
+  ];
+
 
   // ---------- Timing ----------
   let lastTime = 0;
@@ -203,12 +219,15 @@
   }
 
   // ---------- Enemy spawning ----------
-  function spawnEnemy(type) {
+  function spawnEnemy(type, opts) {
     const def = ENEMY_TYPES[type] || ENEMY_TYPES.normal;
     const start = WAYPOINTS[0];
     // Enemies get tougher each wave: +HP_PER_WAVE per wave (wave 1 = base).
     const mult = 1 + (state.wave - 1) * HP_PER_WAVE;
-    const hp = def.hp * mult;
+    // Boss modifiers may scale this enemy's HP (hpMult) and reward (rewardMult).
+    const hpMult = opts && opts.hpMult != null ? opts.hpMult : 1;
+    const rewardMult = opts && opts.rewardMult != null ? opts.rewardMult : 1;
+    const hp = def.hp * mult * hpMult;
     state.enemies.push({
       type: type,
       x: start.x,
@@ -220,7 +239,8 @@
       speed: def.speed,
       radius: def.radius,
       color: def.color,
-      slowTimer: 0              // seconds remaining of a slow effect
+      slowTimer: 0,             // seconds remaining of a slow effect
+      rewardMult: rewardMult    // extra cash multiplier on kill
     });
 
     emit(GAME_EVENTS.ENEMY_SPAWNED, {
@@ -242,20 +262,26 @@
         waveActive = false;
         // Economy depth: interest on unspent cash when a wave is cleared.
         // Skip the very first completion so the opening cash isn't taxed.
+        let interest = 0;
         if (state.wave > 0) {
-          const interest = Math.floor(Math.min(state.cash * INTEREST_RATE, INTEREST_CAP));
+          interest = Math.floor(Math.min(state.cash * INTEREST_RATE, INTEREST_CAP));
           if (interest > 0) {
             state.cash += interest;
             dirty = true;
           }
         }
+        // Tell the renderer how much the wave clear earned (income toast).
+        emit(GAME_EVENTS.WAVE_CLEARED, { wave: state.wave, interest: interest });
       }
       return;
     }
     spawnTimer -= dt;
     if (spawnTimer <= 0 && spawnQueue.length > 0) {
-      const type = spawnQueue.shift();
-      spawnEnemy(type);
+      const entry = spawnQueue.shift();
+      // Queue entries may be a type string or a {type, hpMult, rewardMult} object.
+      const type = typeof entry === 'string' ? entry : entry.type;
+      const opts = typeof entry === 'object' ? entry : null;
+      spawnEnemy(type, opts);
       spawnedThisWave++;
       spawnTimer = SPAWN_INTERVAL;
       dirty = true;
@@ -331,7 +357,9 @@
           const e = state.enemies[i];
           if (dist(tx, ty, e.x, e.y) > rangePx) continue; // must be in main range
           const d = dist(best.x, best.y, e.x, e.y);
-          const amount = d <= splashPx ? dmg : 0;
+          // Frost/splash combo: frosted creeps take bonus splash damage.
+          const frosted = e.slowTimer > 0 || e.slow === true;
+          const amount = d <= splashPx ? (frosted ? dmg * FROST_SPLASH_BONUS : dmg) : 0;
           if (amount <= 0) continue;
 
           e.hp -= amount;
@@ -339,7 +367,7 @@
 
           if (e.hp <= 0) {
             state.enemies.splice(i, 1);
-            state.cash += killReward(e.type);
+            state.cash += killReward(e.type, e.rewardMult);
           }
         }
       } else {
@@ -356,7 +384,7 @@
         if (best.hp <= 0) {
           const idx = state.enemies.indexOf(best);
           if (idx >= 0) state.enemies.splice(idx, 1);
-          state.cash += killReward(best.type);
+          state.cash += killReward(best.type, best.rewardMult);
         }
       }
     }
@@ -401,10 +429,12 @@
   }
 
   // Cash reward scales slightly with wave so late waves stay rewarding.
-  // Per-type bonuses make tanky/boss creeps worth more to kill.
-  function killReward(type) {
+  // Per-type bonuses make tanky/boss creeps worth more to kill. An optional
+  // rewardMult (from a boss modifier) scales the payout further.
+  function killReward(type, rewardMult) {
     const base = KILL_REWARD_BY_TYPE[type] || KILL_REWARD;
-    return base + Math.floor(state.wave * 0.5);
+    const mult = rewardMult != null ? rewardMult : 1;
+    return Math.floor((base + Math.floor(state.wave * 0.5)) * mult);
   }
 
   // ---------- Snapshot for the renderer ----------
@@ -604,13 +634,60 @@
   function onWaveStarted() {
     if (state.gameOver) return; // no waves after game over
     if (waveActive) return; // only one wave at a time
+
+    const queue = buildWaveQueue(state.wave + 1);
+    // Boss-choice gate: if the upcoming wave has a boss and no modifier has
+    // been picked yet, ask the player first instead of starting the wave.
+    const hasBoss = queue.some(function (t) { return t === 'boss'; });
+    if (hasBoss && bossModifier === null) {
+      emit(GAME_EVENTS.BOSS_MODIFIER_REQUEST, {
+        wave: state.wave + 1,
+        options: BOSS_MODIFIERS.map(function (m) { return { id: m.id, label: m.label, desc: m.desc }; })
+      });
+      return;
+    }
+
+    beginWave();
+  }
+
+  // Renderer dispatches BOSS_MODIFIER with { choice } after the player picks.
+  function onBossModifier(evt) {
+    const d = evt.detail;
+    if (!d || !d.choice) return;
+    const mod = BOSS_MODIFIERS.find(function (m) { return m.id === d.choice; });
+    if (!mod) return;
+    if (state.gameOver) return;
+    bossModifier = mod.id;
+    // Cash-boost modifier pays out immediately so the player can build.
+    if (mod.cashBonus) {
+      state.cash += mod.cashBonus;
+      dirty = true;
+    }
+    beginWave();
+  }
+
+  function beginWave() {
+    if (waveActive) return;
     state.wave++;
     spawnQueue = buildWaveQueue(state.wave);
+    // Apply the chosen boss modifier to any boss in this wave.
+    const mod = BOSS_MODIFIERS.find(function (m) { return m.id === bossModifier; });
+    if (mod) {
+      spawnQueue = spawnQueue.map(function (t) {
+        if (t === 'boss') {
+          if (mod.hpMult != null) return { type: 'boss', hpMult: mod.hpMult, rewardMult: mod.rewardMult || 1 };
+        }
+        return t;
+      });
+      // A modifier is consumed once applied.
+      bossModifier = null;
+    }
     spawnTimer = 0;
     waveActive = true;
     spawnedThisWave = 0;
     dirty = true;
   }
+
 
   // Build the ordered list of enemy types for a wave. Uses the preset table
   // when defined; otherwise generates a growing formula-based mix.
@@ -653,6 +730,7 @@
     spawnTimer = 0;
     waveActive = false;
     spawnedThisWave = 0;
+    bossModifier = null;
 
     dirty = true;
   }
@@ -665,6 +743,7 @@
   window.addEventListener(GAME_EVENTS.CHANGE_TARGET_MODE, onChangeTargetMode);
   window.addEventListener(GAME_EVENTS.TOGGLE_PAUSE, onTogglePause);
   window.addEventListener(GAME_EVENTS.SET_SPEED, onSetSpeed);
+  window.addEventListener(GAME_EVENTS.BOSS_MODIFIER, onBossModifier);
   window.addEventListener(GAME_EVENTS.RESTART, onRestart);
 
   // ---------- Start the logic loop ----------

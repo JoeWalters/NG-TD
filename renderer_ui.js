@@ -112,6 +112,19 @@
         ctx.fillStyle = grad;
         ctx.fillRect(x, y, TILE_PX, TILE_PY);
 
+        // Onboarding highlight: every empty, unoccupied tile shows a faint
+        // glow so new players can see exactly where towers may be built.
+        const occupied = display.towers.some(function (t) {
+          return t.row === row && t.col === col;
+        });
+        if (cell === 0 && !occupied) {
+          ctx.fillStyle = 'rgba(56,189,248,0.07)';
+          ctx.fillRect(x, y, TILE_PX, TILE_PY);
+          ctx.strokeStyle = 'rgba(56,189,248,0.22)';
+          ctx.lineWidth = 1;
+          ctx.strokeRect(x + 0.5, y + 0.5, TILE_PX - 1, TILE_PY - 1);
+        }
+
         // Path tiles get a subtle inner highlight + darker edges so the lane
         // reads clearly against the empty ground.
         if (isPath) {
@@ -488,6 +501,11 @@
     el('th-mode').textContent = String(tower.targetMode || 'nearest');
     el('th-upgrade').textContent = upgradeCost != null ? String(upgradeCost) : '—';
 
+    // Per-tower role line: a one-phrase reminder of what this tower does.
+    const roleEl = document.getElementById('th-role');
+    const role = TOWER_ROLES[tower.type] || '';
+    if (roleEl) roleEl.textContent = role;
+
     // On touch devices, show Sell / Mode buttons so users can act on the
     // tower without right-click or keyboard. Desktop keeps the buttons hidden.
     const actionsEl = document.getElementById('th-actions');
@@ -539,6 +557,7 @@
     }
 
     tickBossBanner();
+    tickToast();
 
     requestAnimationFrame(render);
   }
@@ -817,6 +836,60 @@
     }
   }
 
+  // ---------- Income toast (wave-clear feedback) ----------
+  let toastEl = null;
+  let toastTimer = 0;
+  const TOAST_TTL = 90; // frames
+  function onWaveCleared(evt) {
+    const d = evt.detail || {};
+    if (!toastEl) toastEl = document.getElementById('toast');
+    if (!toastEl) return;
+    const interest = d.interest || 0;
+    const wave = d.wave || 0;
+    // "Wave X cleared — +$Y interest" (or "+$0" when no interest applies).
+    toastEl.textContent = 'Wave ' + wave + ' cleared +$' + interest + ' interest';
+    toastEl.classList.add('show');
+    toastTimer = TOAST_TTL;
+  }
+  function tickToast() {
+    if (toastTimer > 0) {
+      toastTimer--;
+      if (toastTimer === 0 && toastEl) toastEl.classList.remove('show');
+    }
+  }
+
+  // ---------- Boss choice modal ----------
+  let bossChoiceEl = null;
+  let bossChoiceOptionsEl = null;
+  function onBossModifierRequest(evt) {
+    const d = evt.detail || {};
+    const options = Array.isArray(d.options) ? d.options : [];
+    if (!bossChoiceEl) bossChoiceEl = document.getElementById('boss-choice');
+    if (!bossChoiceOptionsEl) bossChoiceOptionsEl = document.getElementById('bc-options');
+    if (!bossChoiceEl || !bossChoiceOptionsEl) return;
+    if (options.length === 0) return;
+
+    bossChoiceOptionsEl.innerHTML = '';
+    options.forEach(function (opt) {
+      const btn = document.createElement('button');
+      btn.className = 'bc-option';
+      const strong = document.createElement('strong');
+      strong.textContent = opt.label;
+      const desc = document.createElement('span');
+      desc.textContent = opt.desc;
+      btn.appendChild(strong);
+      btn.appendChild(desc);
+      btn.addEventListener('click', function () {
+        bossChoiceEl.classList.add('hidden');
+        window.dispatchEvent(
+          new CustomEvent(GAME_EVENTS.BOSS_MODIFIER, { detail: { choice: opt.id } })
+        );
+      });
+      bossChoiceOptionsEl.appendChild(btn);
+    });
+    bossChoiceEl.classList.remove('hidden');
+  }
+
   // ---------- Game over overlay ----------
   const gameOverEl = document.getElementById('game-over');
   let gameOverShown = false;
@@ -861,7 +934,20 @@
   window.addEventListener(GAME_EVENTS.ENEMY_DAMAGED, onEnemyDamaged);
   window.addEventListener(GAME_EVENTS.GAME_OVER, onGameOver);
   window.addEventListener(GAME_EVENTS.BOSS_SPAWNED, onBossSpawned);
+  window.addEventListener(GAME_EVENTS.BOSS_MODIFIER_REQUEST, onBossModifierRequest);
+  window.addEventListener(GAME_EVENTS.WAVE_CLEARED, onWaveCleared);
   window.addEventListener(GAME_EVENTS.RESTART, onRestart);
+
+  // ---------- Onboarding overlay dismiss ----------
+  // The how-to overlay is shown on first load. Dismissing it hides the
+  // overlay for the rest of this session (kept in-memory, not persisted).
+  const howtoEl = document.getElementById('howto');
+  const howtoStart = document.getElementById('howto-start');
+  if (howtoStart) {
+    howtoStart.addEventListener('click', function () {
+      if (howtoEl) howtoEl.classList.add('hidden');
+    });
+  }
 
   // ---------- Start the render loop ----------
   requestAnimationFrame(render);
