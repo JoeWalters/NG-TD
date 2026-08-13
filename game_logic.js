@@ -732,6 +732,11 @@
     spawnedThisWave = 0;
     bossModifier = null;
 
+    // Reset speed & pause so a "Play Again" never resumes mid-pause or at
+    // a boosted speed (matches the renderer's button labels reset).
+    paused = false;
+    gameSpeed = 1;
+
     dirty = true;
   }
 

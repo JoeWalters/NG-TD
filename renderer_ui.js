@@ -920,6 +920,12 @@
     resetDisplayState();
     if (gameOverEl) gameOverEl.classList.add('hidden');
     gameOverShown = false;
+
+    // Reset pause/speed button labels so they stay in sync with game state.
+    pausedLabel = false;
+    if (pauseBtn) pauseBtn.textContent = '⏸ Pause';
+    speedIndex = 0;
+    if (speedBtn) speedBtn.textContent = '1×';
   }
 
   const playAgainBtn = document.getElementById('play-again');
