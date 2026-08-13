@@ -44,6 +44,19 @@
     return row * COLS + col;
   }
 
+  // Convert an event's client coordinates into internal canvas pixels.
+  // The canvas keeps a 640x640 internal resolution but may be CSS-scaled to
+  // fit small screens, so we map through getBoundingClientRect.
+  function canvasPoint(evt) {
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+    return {
+      x: (evt.clientX - rect.left) * scaleX,
+      y: (evt.clientY - rect.top) * scaleY
+    };
+  }
+
   // Convert a canvas pixel coordinate into a grid tile (col, row).
   function tileAt(mx, my) {
     const col = Math.floor(mx / TILE_PX);
@@ -98,6 +111,19 @@
         grad.addColorStop(1, shade(fill, -14));
         ctx.fillStyle = grad;
         ctx.fillRect(x, y, TILE_PX, TILE_PY);
+
+        // Onboarding highlight: every empty, unoccupied tile shows a faint
+        // glow so new players can see exactly where towers may be built.
+        const occupied = display.towers.some(function (t) {
+          return t.row === row && t.col === col;
+        });
+        if (cell === 0 && !occupied) {
+          ctx.fillStyle = 'rgba(56,189,248,0.07)';
+          ctx.fillRect(x, y, TILE_PX, TILE_PY);
+          ctx.strokeStyle = 'rgba(56,189,248,0.22)';
+          ctx.lineWidth = 1;
+          ctx.strokeRect(x + 0.5, y + 0.5, TILE_PX - 1, TILE_PY - 1);
+        }
 
         // Path tiles get a subtle inner highlight + darker edges so the lane
         // reads clearly against the empty ground.
@@ -475,6 +501,21 @@
     el('th-mode').textContent = String(tower.targetMode || 'nearest');
     el('th-upgrade').textContent = upgradeCost != null ? String(upgradeCost) : '—';
 
+    // Per-tower role line: a one-phrase reminder of what this tower does.
+    const roleEl = document.getElementById('th-role');
+    const role = TOWER_ROLES[tower.type] || '';
+    if (roleEl) roleEl.textContent = role;
+
+    // On touch devices, show Sell / Mode buttons so users can act on the
+    // tower without right-click or keyboard. Desktop keeps the buttons hidden.
+    const actionsEl = document.getElementById('th-actions');
+    if (actionsEl) {
+      const showActions = 'ontouchstart' in window && display.hoverTile;
+      actionsEl.classList.toggle('show', showActions);
+      // Remember which tower the buttons should act on.
+      actionsEl._tower = { row: tower.row, col: tower.col };
+    }
+
     panel.classList.remove('hidden');
   }
 
@@ -516,6 +557,7 @@
     }
 
     tickBossBanner();
+    tickToast();
 
     requestAnimationFrame(render);
   }
@@ -571,10 +613,8 @@
 
   // ---------- Mouse tracking (for hover range indicator) ----------
   canvas.addEventListener('mousemove', function (evt) {
-    const rect = canvas.getBoundingClientRect();
-    const mx = evt.clientX - rect.left;
-    const my = evt.clientY - rect.top;
-    display.hoverTile = tileAt(mx, my) || null;
+    const p = canvasPoint(evt);
+    display.hoverTile = tileAt(p.x, p.y) || null;
   });
 
   canvas.addEventListener('mouseleave', function () {
@@ -583,10 +623,8 @@
 
   // ---------- Click -> grid coords -> dispatch build / upgrade request ----------
   canvas.addEventListener('click', function (evt) {
-    const rect = canvas.getBoundingClientRect();
-    const mx = evt.clientX - rect.left;
-    const my = evt.clientY - rect.top;
-    const tile = tileAt(mx, my);
+    const p = canvasPoint(evt);
+    const tile = tileAt(p.x, p.y);
     if (!tile) return;
 
     const tower = display.towers.find(function (t) {
@@ -612,10 +650,8 @@
   // ---------- Right-click a tower -> sell ----------
   canvas.addEventListener('contextmenu', function (evt) {
     evt.preventDefault();
-    const rect = canvas.getBoundingClientRect();
-    const mx = evt.clientX - rect.left;
-    const my = evt.clientY - rect.top;
-    const tile = tileAt(mx, my);
+    const p = canvasPoint(evt);
+    const tile = tileAt(p.x, p.y);
     if (!tile) return;
 
     const tower = display.towers.find(function (t) {
@@ -629,6 +665,85 @@
       })
     );
   });
+
+  // ---------- Touch input (mobile) ----------
+  // touchstart updates the hover tile (so the range ring + panel appear);
+  // a tap on an empty tile places a tower, a tap on an occupied tile upgrades.
+  // Selling / mode changes are handled by the panel's Sell / Mode buttons,
+  // which the tower HUD reveals on touch devices.
+  let touchActive = false;
+
+  canvas.addEventListener('touchstart', function (evt) {
+    if (evt.touches && evt.touches.length > 0) {
+      const t = evt.touches[0];
+      const p = canvasPoint(t);
+      display.hoverTile = tileAt(p.x, p.y) || null;
+      touchActive = true;
+    }
+  }, { passive: true });
+
+  canvas.addEventListener('touchend', function (evt) {
+    if (!touchActive) return;
+    touchActive = false;
+
+    if (evt.changedTouches && evt.changedTouches.length > 0) {
+      const t = evt.changedTouches[0];
+      const p = canvasPoint(t);
+      const tile = tileAt(p.x, p.y);
+      if (!tile) return;
+
+      const tower = display.towers.find(function (tw) {
+        return tw.row === tile.row && tw.col === tile.col;
+      });
+
+      if (tower) {
+        window.dispatchEvent(
+          new CustomEvent(GAME_EVENTS.UPGRADE_TOWER, {
+            detail: { row: tile.row, col: tile.col }
+          })
+        );
+      } else {
+        window.dispatchEvent(
+          new CustomEvent(GAME_EVENTS.TOWER_PLACED, {
+            detail: { row: tile.row, col: tile.col, type: selectedType }
+          })
+        );
+      }
+    }
+  }, { passive: true });
+
+  canvas.addEventListener('touchcancel', function () {
+    touchActive = false;
+  });
+
+  // ---------- Mobile action bar: Sell / Mode buttons ----------
+  const thSellBtn = document.getElementById('th-sell');
+  if (thSellBtn) {
+    thSellBtn.addEventListener('click', function () {
+      const actions = document.getElementById('th-actions');
+      const tower = actions && actions._tower;
+      if (!tower) return;
+      window.dispatchEvent(
+        new CustomEvent(GAME_EVENTS.SELL_TOWER, {
+          detail: { row: tower.row, col: tower.col }
+        })
+      );
+    });
+  }
+
+  const thModeBtn = document.getElementById('th-mode-btn');
+  if (thModeBtn) {
+    thModeBtn.addEventListener('click', function () {
+      const actions = document.getElementById('th-actions');
+      const tower = actions && actions._tower;
+      if (!tower) return;
+      window.dispatchEvent(
+        new CustomEvent(GAME_EVENTS.CHANGE_TARGET_MODE, {
+          detail: { row: tower.row, col: tower.col }
+        })
+      );
+    });
+  }
 
   // ---------- Keyboard: cycle targeting mode of hovered tower (M key) ----------
   window.addEventListener('keydown', function (evt) {
@@ -721,6 +836,60 @@
     }
   }
 
+  // ---------- Income toast (wave-clear feedback) ----------
+  let toastEl = null;
+  let toastTimer = 0;
+  const TOAST_TTL = 90; // frames
+  function onWaveCleared(evt) {
+    const d = evt.detail || {};
+    if (!toastEl) toastEl = document.getElementById('toast');
+    if (!toastEl) return;
+    const interest = d.interest || 0;
+    const wave = d.wave || 0;
+    // "Wave X cleared — +$Y interest" (or "+$0" when no interest applies).
+    toastEl.textContent = 'Wave ' + wave + ' cleared +$' + interest + ' interest';
+    toastEl.classList.add('show');
+    toastTimer = TOAST_TTL;
+  }
+  function tickToast() {
+    if (toastTimer > 0) {
+      toastTimer--;
+      if (toastTimer === 0 && toastEl) toastEl.classList.remove('show');
+    }
+  }
+
+  // ---------- Boss choice modal ----------
+  let bossChoiceEl = null;
+  let bossChoiceOptionsEl = null;
+  function onBossModifierRequest(evt) {
+    const d = evt.detail || {};
+    const options = Array.isArray(d.options) ? d.options : [];
+    if (!bossChoiceEl) bossChoiceEl = document.getElementById('boss-choice');
+    if (!bossChoiceOptionsEl) bossChoiceOptionsEl = document.getElementById('bc-options');
+    if (!bossChoiceEl || !bossChoiceOptionsEl) return;
+    if (options.length === 0) return;
+
+    bossChoiceOptionsEl.innerHTML = '';
+    options.forEach(function (opt) {
+      const btn = document.createElement('button');
+      btn.className = 'bc-option';
+      const strong = document.createElement('strong');
+      strong.textContent = opt.label;
+      const desc = document.createElement('span');
+      desc.textContent = opt.desc;
+      btn.appendChild(strong);
+      btn.appendChild(desc);
+      btn.addEventListener('click', function () {
+        bossChoiceEl.classList.add('hidden');
+        window.dispatchEvent(
+          new CustomEvent(GAME_EVENTS.BOSS_MODIFIER, { detail: { choice: opt.id } })
+        );
+      });
+      bossChoiceOptionsEl.appendChild(btn);
+    });
+    bossChoiceEl.classList.remove('hidden');
+  }
+
   // ---------- Game over overlay ----------
   const gameOverEl = document.getElementById('game-over');
   let gameOverShown = false;
@@ -765,7 +934,20 @@
   window.addEventListener(GAME_EVENTS.ENEMY_DAMAGED, onEnemyDamaged);
   window.addEventListener(GAME_EVENTS.GAME_OVER, onGameOver);
   window.addEventListener(GAME_EVENTS.BOSS_SPAWNED, onBossSpawned);
+  window.addEventListener(GAME_EVENTS.BOSS_MODIFIER_REQUEST, onBossModifierRequest);
+  window.addEventListener(GAME_EVENTS.WAVE_CLEARED, onWaveCleared);
   window.addEventListener(GAME_EVENTS.RESTART, onRestart);
+
+  // ---------- Onboarding overlay dismiss ----------
+  // The how-to overlay is shown on first load. Dismissing it hides the
+  // overlay for the rest of this session (kept in-memory, not persisted).
+  const howtoEl = document.getElementById('howto');
+  const howtoStart = document.getElementById('howto-start');
+  if (howtoStart) {
+    howtoStart.addEventListener('click', function () {
+      if (howtoEl) howtoEl.classList.add('hidden');
+    });
+  }
 
   // ---------- Start the render loop ----------
   requestAnimationFrame(render);
