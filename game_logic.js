@@ -422,7 +422,7 @@
       if (mode === 'first') {
         score = -e.pathIndex; // higher pathIndex = further along = preferred
       } else if (mode === 'strong') {
-        score = -e.maxHp; // higher hp = preferred
+        score = -e.hp; // higher current hp = preferred
       } else {
         score = d; // nearest
       }
