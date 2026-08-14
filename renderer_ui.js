@@ -887,6 +887,19 @@
       });
       bossChoiceOptionsEl.appendChild(btn);
     });
+
+    // Cancel / skip: send the wave with no modifier so the game can't soft-lock.
+    const skipBtn = document.createElement('button');
+    skipBtn.className = 'bc-option';
+    skipBtn.textContent = 'Just send it — no modifier';
+    skipBtn.addEventListener('click', function () {
+      bossChoiceEl.classList.add('hidden');
+      window.dispatchEvent(
+        new CustomEvent(GAME_EVENTS.BOSS_MODIFIER, { detail: { choice: 'skip' } })
+      );
+    });
+    bossChoiceOptionsEl.appendChild(skipBtn);
+
     bossChoiceEl.classList.remove('hidden');
   }
 

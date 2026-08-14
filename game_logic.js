@@ -666,18 +666,22 @@
   }
 
   // Renderer dispatches BOSS_MODIFIER with { choice } after the player picks.
+  // A choice of 'skip' (or an unrecognized one) means "no modifier — send the wave".
   function onBossModifier(evt) {
     const d = evt.detail;
     if (!d || !d.choice) return;
-    const mod = BOSS_MODIFIERS.find(function (m) { return m.id === d.choice; });
-    if (!mod) return;
     if (state.gameOver) return;
-    bossModifier = mod.id;
-    // Cash-boost modifier pays out immediately so the player can build.
-    if (mod.cashBonus) {
-      state.cash += mod.cashBonus;
-      dirty = true;
+    const mod = BOSS_MODIFIERS.find(function (m) { return m.id === d.choice; });
+    if (mod) {
+      bossModifier = mod.id;
+      // Cash-boost modifier pays out immediately so the player can build.
+      if (mod.cashBonus) {
+        state.cash += mod.cashBonus;
+        dirty = true;
+      }
     }
+    // If no matching modifier was picked (skip/cancel), bossModifier stays null
+    // so the wave starts with the default boss.
     beginWave();
   }
 
