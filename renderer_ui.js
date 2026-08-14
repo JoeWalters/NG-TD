@@ -90,14 +90,23 @@
 
   // ---------- Grid & path rendering ----------
   function drawGrid() {
+    // Precompute O(1) lookups once per frame so the per-cell loop avoids
+    // scanning the whole path/tower arrays on every tile (O(cells x N) -> O(cells)).
+    const pathSet = new Set();
+    if (Array.isArray(display.path)) {
+      for (const p of display.path) pathSet.add(p.row + ':' + p.col);
+    }
+    const occupiedSet = new Set();
+    if (Array.isArray(display.towers)) {
+      for (const t of display.towers) occupiedSet.add(t.row + ':' + t.col);
+    }
+
     for (let row = 0; row < ROWS; row++) {
       for (let col = 0; col < COLS; col++) {
         const x = col * TILE_PX;
         const y = row * TILE_PY;
         const cell = display.grid ? display.grid[gridIndex(row, col)] : undefined;
-        const isPath = display.path.some(
-          (p) => p.row === row && p.col === col
-        );
+        const isPath = pathSet.has(row + ':' + col);
 
         let fill = '#0f172a';          // empty
         if (isPath) fill = '#3b2f1f';  // path tile (sand/stone)
@@ -114,9 +123,7 @@
 
         // Onboarding highlight: every empty, unoccupied tile shows a faint
         // glow so new players can see exactly where towers may be built.
-        const occupied = display.towers.some(function (t) {
-          return t.row === row && t.col === col;
-        });
+        const occupied = occupiedSet.has(row + ':' + col);
         if (cell === 0 && !occupied) {
           ctx.fillStyle = 'rgba(56,189,248,0.07)';
           ctx.fillRect(x, y, TILE_PX, TILE_PY);
