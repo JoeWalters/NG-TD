@@ -913,6 +913,8 @@
       gameOverShown = true;
       const waveLabel = document.getElementById('game-over-wave');
       if (waveLabel) waveLabel.textContent = String(d.wave != null ? d.wave : 0);
+      const killsLabel = document.getElementById('game-over-kills');
+      if (killsLabel) killsLabel.textContent = String(d.kills != null ? d.kills : 0);
       gameOverEl.classList.remove('hidden');
     }
   }
@@ -931,8 +933,13 @@
 
   // ---------- Victory overlay ----------
   const victoryEl = document.getElementById('victory');
-  function onVictory() {
-    if (victoryEl) victoryEl.classList.remove('hidden');
+  function onVictory(evt) {
+    const d = evt.detail || {};
+    if (victoryEl) {
+      const killsLabel = document.getElementById('victory-kills');
+      if (killsLabel) killsLabel.textContent = String(d.kills != null ? d.kills : 0);
+      victoryEl.classList.remove('hidden');
+    }
   }
 
   function onRestart() {

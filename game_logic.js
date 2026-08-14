@@ -121,6 +121,7 @@
     cash: CONFIG.STARTING_CASH,
     lives: CONFIG.STARTING_LIVES,
     wave: 0,
+    kills: 0,      // total creeps defeated
     gameOver: false,
     enemies: [],   // active creeps
     towers: [],    // active towers
@@ -223,7 +224,7 @@
     if (state.gameOver) return;
     state.gameOver = true;
     waveActive = false;
-    emit(GAME_EVENTS.GAME_OVER, { lives: state.lives, wave: state.wave });
+    emit(GAME_EVENTS.GAME_OVER, { lives: state.lives, wave: state.wave, kills: state.kills });
   }
 
   // ---------- Enemy spawning ----------
@@ -271,7 +272,7 @@
 
         // Victory: clearing the final wave ends the game on a high note.
         if (state.wave === VICTORY_WAVE) {
-          emit(GAME_EVENTS.VICTORY, { wave: state.wave });
+          emit(GAME_EVENTS.VICTORY, { wave: state.wave, kills: state.kills });
           return;
         }
         // Economy depth: interest on unspent cash when a wave is cleared.
@@ -383,6 +384,7 @@
           if (e.hp <= 0) {
             state.enemies.splice(i, 1);
             state.cash += killReward(e.type, e.rewardMult);
+            state.kills++;
           }
         }
       } else {
@@ -400,6 +402,7 @@
           const idx = state.enemies.indexOf(best);
           if (idx >= 0) state.enemies.splice(idx, 1);
           state.cash += killReward(best.type, best.rewardMult);
+          state.kills++;
         }
       }
     }
@@ -458,6 +461,7 @@
       cash: state.cash,
       lives: state.lives,
       wave: state.wave,
+      kills: state.kills,
       gameOver: state.gameOver,
       nextWave: buildWaveQueue(state.wave + 1),
       towerTypes: {
@@ -730,6 +734,7 @@
     state.cash = CONFIG.STARTING_CASH;
     state.lives = CONFIG.STARTING_LIVES;
     state.wave = 0;
+    state.kills = 0;
     state.gameOver = false;
     state.enemies = [];
     state.towers = [];
