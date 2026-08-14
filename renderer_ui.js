@@ -916,9 +916,16 @@
     display.hoverTile = null;
   }
 
+  // ---------- Victory overlay ----------
+  const victoryEl = document.getElementById('victory');
+  function onVictory() {
+    if (victoryEl) victoryEl.classList.remove('hidden');
+  }
+
   function onRestart() {
     resetDisplayState();
     if (gameOverEl) gameOverEl.classList.add('hidden');
+    if (victoryEl) victoryEl.classList.add('hidden');
     gameOverShown = false;
 
     // Reset pause/speed button labels so they stay in sync with game state.
@@ -929,8 +936,14 @@
   }
 
   const playAgainBtn = document.getElementById('play-again');
+  const victoryAgainBtn = document.getElementById('victory-again');
   if (playAgainBtn) {
     playAgainBtn.addEventListener('click', function () {
+      window.dispatchEvent(new CustomEvent(GAME_EVENTS.RESTART, { detail: {} }));
+    });
+  }
+  if (victoryAgainBtn) {
+    victoryAgainBtn.addEventListener('click', function () {
       window.dispatchEvent(new CustomEvent(GAME_EVENTS.RESTART, { detail: {} }));
     });
   }
@@ -942,6 +955,7 @@
   window.addEventListener(GAME_EVENTS.BOSS_SPAWNED, onBossSpawned);
   window.addEventListener(GAME_EVENTS.BOSS_MODIFIER_REQUEST, onBossModifierRequest);
   window.addEventListener(GAME_EVENTS.WAVE_CLEARED, onWaveCleared);
+  window.addEventListener(GAME_EVENTS.VICTORY, onVictory);
   window.addEventListener(GAME_EVENTS.RESTART, onRestart);
 
   // ---------- Onboarding overlay dismiss ----------

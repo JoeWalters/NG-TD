@@ -28,6 +28,9 @@
   const COUNT_PER_WAVE = 2;     // +2 enemies per wave
   const MAX_DT = 0.05;          // clamp dt to avoid huge jumps on tab switch
 
+  // Clearing this wave wins the game (a concrete goal instead of endless waves).
+  const VICTORY_WAVE = 20;
+
   // Economy depth: earn interest on unspent cash each time a wave completes.
   const INTEREST_RATE = 0.05;   // +5% of unspent cash per wave cleared
   const INTEREST_CAP = 25;      // cap so hoarding can't snowball infinitely
@@ -265,6 +268,12 @@
       // Wave is complete when nothing is queued and no creeps remain.
       if (state.enemies.length === 0) {
         waveActive = false;
+
+        // Victory: clearing the final wave ends the game on a high note.
+        if (state.wave === VICTORY_WAVE) {
+          emit(GAME_EVENTS.VICTORY, { wave: state.wave });
+          return;
+        }
         // Economy depth: interest on unspent cash when a wave is cleared.
         // Skip the very first completion (wave 1) so the opening cash isn't
         // taxed; interest starts applying from the wave-2 clear onward.

@@ -33,5 +33,6 @@ const GAME_EVENTS = {
   BOSS_MODIFIER_REQUEST: 'td:boss_modifier_request', // Sent by A -> B shows boss-choice modal
   BOSS_MODIFIER: 'td:boss_modifier',       // Sent by B -> A applies the chosen boss modifier
   WAVE_CLEARED: 'td:wave_cleared',         // Sent by A -> B shows the income toast
-  GAME_OVER: 'td:game_over'                // Sent by A -> Used by B to show the game-over overlay
+  VICTORY: 'td:victory',                 // Sent by A -> B shows the victory overlay
+  GAME_OVER: 'td:game_over'              // Sent by A -> Used by B to show the game-over overlay
 };
