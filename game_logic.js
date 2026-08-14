@@ -188,7 +188,10 @@
   }
 
   const MAX_LEVEL = 3;
-  const UPGRADE_COST_MULT = 0.6;   // each level costs 60% of the base cost
+  // Upgrading a tower from level L costs 60%^L of its base cost, so each
+  // level is cheaper than the last (L1 = 60%, L2 = 36% of base). This is
+  // the same formula the renderer's HUD shows, so the two never drift.
+  const UPGRADE_COST_MULT = 0.6;
   const UPGRADE_DAMAGE_MULT = 1.25; // +25% damage per level
   const UPGRADE_RANGE_MULT = 1.1;  // +10% range per level
   const SELL_REFUND = 0.7;         // refund 70% of total invested on sell
@@ -200,8 +203,10 @@
   function towerRange(def, level) {
     return def.range * Math.pow(UPGRADE_RANGE_MULT, level - 1);
   }
+  // Cost to upgrade a tower currently at `level` to the next level.
+  // Higher levels are cheaper per upgrade (60%^level of base cost).
   function upgradeCost(def, level) {
-    return Math.floor(def.cost * UPGRADE_COST_MULT);
+    return Math.floor(def.cost * Math.pow(UPGRADE_COST_MULT, level));
   }
 
   function emit(eventName, detail) {
