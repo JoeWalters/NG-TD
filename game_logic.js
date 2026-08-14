@@ -266,9 +266,10 @@
       if (state.enemies.length === 0) {
         waveActive = false;
         // Economy depth: interest on unspent cash when a wave is cleared.
-        // Skip the very first completion so the opening cash isn't taxed.
+        // Skip the very first completion (wave 1) so the opening cash isn't
+        // taxed; interest starts applying from the wave-2 clear onward.
         let interest = 0;
-        if (state.wave > 0) {
+        if (state.wave > 1) {
           interest = Math.floor(Math.min(state.cash * INTEREST_RATE, INTEREST_CAP));
           if (interest > 0) {
             state.cash += interest;
