@@ -479,8 +479,12 @@
           row: t.row,
           col: t.col,
           type: t.type,
+          // Effective stats at the tower's current level, computed by the
+          // shared formulas here in Computer A so the HUD never drifts.
+          damage: towerDamage(def, t.level),
           range: t.range,
           level: t.level,
+          upgradeCost: upgradeCost(def, t.level),
           targetMode: t.targetMode,
           cooldownFrac: Math.max(0, Math.min(1, t.cooldown * def.fireRate))
         };

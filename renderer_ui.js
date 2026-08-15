@@ -495,18 +495,15 @@
       return;
     }
 
-    const def = display.towerTypes[tower.type];
-    const upgradeCost = def && def.cost != null
-      ? Math.round(def.cost * Math.pow(0.6, tower.level)) // same formula as game_logic
-      : null;
-
     const el = (id) => document.getElementById(id);
     el('th-title').textContent = tower.type.toUpperCase();
     el('th-level').textContent = String(tower.level);
-    el('th-damage').textContent = def ? String(Math.round(def.damage * Math.pow(1.25, tower.level - 1))) : '—';
-    el('th-range').textContent = def ? String(def.range * Math.pow(1.1, tower.level - 1)) : '—';
+    // Read effective stats straight from Computer A's snapshot so the HUD
+    // uses the exact same formulas as the simulation (no drift possible).
+    el('th-damage').textContent = typeof tower.damage === 'number' ? String(Math.round(tower.damage)) : '—';
+    el('th-range').textContent = typeof tower.range === 'number' ? String(tower.range) : '—';
     el('th-mode').textContent = String(tower.targetMode || 'nearest');
-    el('th-upgrade').textContent = upgradeCost != null ? String(upgradeCost) : '—';
+    el('th-upgrade').textContent = typeof tower.upgradeCost === 'number' ? String(tower.upgradeCost) : '—';
 
     // Per-tower role line: a one-phrase reminder of what this tower does.
     const roleEl = document.getElementById('th-role');
