@@ -64,9 +64,12 @@
   const COLS = CONFIG.GRID_COLS;
   const TILE = CONFIG.TILE_SIZE;
 
-  // ---------- Path layouts (path variety) ----------
-  // Build a path cell list by walking cardinal steps from a start cell.
-  // Each step is [dr, dc]; consecutive cells become path tiles.
+  // ---------- Path system ----------
+  // The player can design their own maze path before the first wave: clicking
+  // empty tiles chains them into a connected path from the top entry edge to
+  // the bottom exit edge. This is the game's unique "NG" hook — you shape the
+  // battlefield yourself. A default S-curve layout exists as a fallback so the
+  // map is always playable, but the designed path replaces it when committed.
   function buildPath(startRow, startCol, steps) {
     const cells = [{ row: startRow, col: startCol }];
     let r = startRow;
@@ -79,42 +82,93 @@
     return cells;
   }
 
-  // Layout A: straight vertical path down column 4 (the original map).
-  const LAYOUT_A = buildPath(0, 4, [
-    [1, 0], [1, 0], [1, 0], [1, 0], [1, 0],
-    [1, 0], [1, 0], [1, 0], [1, 0]
-  ]);
-
-  // Layout B: an S-curve through the middle of the map for more interest.
+  // Default S-curve layout (fallback when the player hasn't drawn a path).
   const LAYOUT_B = buildPath(0, 4, [
-    // down col 4 to row 2
     [1, 0], [1, 0],
-    // curve right to col 7
     [0, 1], [0, 1], [0, 1],
-    // down col 7 to row 4
     [1, 0], [1, 0],
-    // curve left to col 2
     [0, -1], [0, -1], [0, -1], [0, -1], [0, -1],
-    // down col 2 to row 6
     [1, 0], [1, 0],
-    // curve right to col 7
     [0, 1], [0, 1], [0, 1], [0, 1], [0, 1],
-    // down col 7 to row 9
     [1, 0], [1, 0], [1, 0]
   ]);
 
-  // Pick a layout: '?path=b' forces the S-curve, '?path=a' forces the
-  // straight. Default is the S-curve (b) for more interesting gameplay.
-  const forcedPath = new URLSearchParams(location.search).get('path');
-  const chosenLayout = forcedPath === 'a' || forcedPath === 'b'
-    ? forcedPath
-    : 'b';
-  const PATH_CELLS = chosenLayout === 'b' ? LAYOUT_B : LAYOUT_A;
+  // Path-design state. A drawn path is a simple chain of cardinally-adjacent
+  // cells. It must start on the top edge (row 0) and end on the bottom edge
+  // (row ROWS-1). Until one is committed, the default layout is used.
+  const DEFAULT_PATH_CELLS = LAYOUT_B;
 
-  // Pixel waypoints: center of each path tile, used for enemy movement.
-  const WAYPOINTS = PATH_CELLS.map(function (c) {
+  // Currently committed path cells + pixel waypoints (rebuilt on commit).
+  let PATH_CELLS = DEFAULT_PATH_CELLS.slice();
+  let WAYPOINTS = PATH_CELLS.map(function (c) {
     return { x: (c.col + 0.5) * TILE, y: (c.row + 0.5) * TILE };
   });
+
+  // Player-drawn path: ordered list of cells as clicked/dragged in the design
+  // overlay. null means the player hasn't drawn anything yet.
+  let drawnPath = null;
+  // True once the player's drawn path has been validated and committed.
+  let pathCommitted = false;
+
+  // Rebuild the grid + waypoints from the current PATH_CELLS.
+  function rebuildPath() {
+    const g = state.grid;
+    // Clear old path marks (1) so a redesigned path can reuse the cells.
+    for (let i = 0; i < g.length; i++) {
+      if (g[i] === 1) g[i] = 0;
+    }
+    PATH_CELLS.forEach(function (c) {
+      g[c.row * COLS + c.col] = 1;
+    });
+    WAYPOINTS = PATH_CELLS.map(function (c) {
+      return { x: (c.col + 0.5) * TILE, y: (c.row + 0.5) * TILE };
+    });
+  }
+
+  // Validate a drawn path: must be non-empty, a simple chain of cardinal
+  // steps, start on row 0 and end on row ROWS-1. Returns true if valid.
+  function validateDrawnPath(cells) {
+    if (!cells || cells.length < 2) return false;
+    const first = cells[0];
+    const last = cells[cells.length - 1];
+    if (first.row !== 0) return false;          // must enter at the top edge
+    if (last.row !== ROWS - 1) return false;    // must exit at the bottom edge
+    for (let i = 1; i < cells.length; i++) {
+      const a = cells[i - 1];
+      const b = cells[i];
+      const dr = Math.abs(b.row - a.row);
+      const dc = Math.abs(b.col - a.col);
+      // Only a single cardinal step between consecutive cells.
+      if (dr + dc !== 1) return false;
+    }
+    // No repeats allowed (a loop would let creeps double back).
+    const seen = new Set();
+    for (const c of cells) {
+      const key = c.row * COLS + c.col;
+      if (seen.has(key)) return false;
+      seen.add(key);
+    }
+    return true;
+  }
+
+  // Commit a drawn path: validate it and rebuild the grid + waypoints.
+  // Falls back to the default layout if the drawn path is invalid.
+  function commitDrawnPath(cells) {
+    if (!validateDrawnPath(cells)) {
+      drawnPath = null;
+      pathCommitted = false;
+      PATH_CELLS = DEFAULT_PATH_CELLS.slice();
+      rebuildPath();
+      emit('td:path_status', { ok: false, reason: 'invalid' });
+      return false;
+    }
+    PATH_CELLS = cells.slice();
+    rebuildPath();
+    drawnPath = cells.slice();
+    pathCommitted = true;
+    emit('td:path_status', { ok: true });
+    return true;
+  }
 
   // ---------- State ----------
   const state = {
@@ -473,6 +527,13 @@
       },
       grid: state.grid,
       path: PATH_CELLS,
+      // Path-design info: whether the player can still design the path, the
+      // cells they've drawn so far, and whether it has been committed.
+      pathDesign: {
+        active: state.wave === 0 && !pathCommitted,
+        drawn: drawnPath || [],
+        committed: pathCommitted
+      },
       towers: state.towers.map(function (t) {
         const def = TOWERS[t.type];
         return {
@@ -765,6 +826,44 @@
     paused = false;
     gameSpeed = 1;
 
+    // Path design resets each game: clear any drawn path back to the default.
+    drawnPath = null;
+    pathCommitted = false;
+    PATH_CELLS = DEFAULT_PATH_CELLS.slice();
+    rebuildPath();
+
+    dirty = true;
+  }
+
+  // ---------- Path design handlers ----------
+  // Renderer dispatches PATH_DRAW with { cells } during path design: an
+  // ordered list of cardinally-adjacent cells the player has clicked/dragged.
+  // We store it so the renderer can show the live preview and validate on commit.
+  function onPathDraw(evt) {
+    const d = evt.detail;
+    if (!d || !Array.isArray(d.cells)) return;
+    // Only allowed before the first wave and before committing.
+    if (state.wave !== 0 || pathCommitted) return;
+    drawnPath = d.cells.map(function (c) {
+      return { row: c.row, col: c.col };
+    });
+  }
+
+  // Renderer dispatches COMMIT_PATH with {} to finalize the drawn path.
+  function onCommitPath() {
+    if (state.wave !== 0 || pathCommitted) return;
+    commitDrawnPath(drawnPath);
+    dirty = true;
+  }
+
+  // Renderer dispatches RESET_PATH with {} to clear the design back to default.
+  function onResetPath() {
+    if (state.wave !== 0 || pathCommitted) return;
+    drawnPath = null;
+    pathCommitted = false;
+    PATH_CELLS = DEFAULT_PATH_CELLS.slice();
+    rebuildPath();
+    emit('td:path_status', { ok: false, reason: 'reset' });
     dirty = true;
   }
 
@@ -778,6 +877,9 @@
   window.addEventListener(GAME_EVENTS.SET_SPEED, onSetSpeed);
   window.addEventListener(GAME_EVENTS.BOSS_MODIFIER, onBossModifier);
   window.addEventListener(GAME_EVENTS.RESTART, onRestart);
+  window.addEventListener(GAME_EVENTS.PATH_DRAW, onPathDraw);
+  window.addEventListener(GAME_EVENTS.COMMIT_PATH, onCommitPath);
+  window.addEventListener(GAME_EVENTS.RESET_PATH, onResetPath);
 
   // ---------- Start the logic loop ----------
   requestAnimationFrame(loop);

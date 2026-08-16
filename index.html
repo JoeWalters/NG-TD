@@ -164,6 +164,22 @@
 
     #start-wave:hover { filter: brightness(1.12); transform: translateY(-1px); }
 
+    /* ---- Path design buttons ---- */
+    #path-done, #path-reset {
+      background: var(--bg);
+      color: var(--text);
+      border: 1px solid var(--panel-border);
+      border-radius: 6px;
+      padding: 6px 12px;
+      font-size: 13px;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+    #path-done.hidden, #path-reset.hidden { display: none; }
+    #path-done { border-color: #22c55e; color: #22c55e; }
+    #path-done:hover { filter: brightness(1.15); }
+    #path-reset:hover { border-color: #f87171; color: #f87171; }
+
     /* ---- Control buttons (pause / speed) ---- */
     #controls {
       display: flex;
@@ -607,6 +623,8 @@
       <button class="type-btn" data-type="frost">Frost<span class="type-tip">Slows enemies. Low damage, keeps the lane safe.</span></button>
     </div>
     <span class="hud-sep"></span>
+    <button id="path-done" class="hidden">Done Path</button>
+    <button id="path-reset" class="hidden">Reset</button>
     <button id="start-wave">Start Wave</button>
     <span class="hud-sep"></span>
     <div id="controls">
@@ -663,8 +681,9 @@
     <div class="howto-card">
       <h2>How to Play</h2>
       <ol>
-        <li>Tap or click an <strong>empty tile</strong> to place a tower.</li>
-        <li>Creeps follow the <strong>yellow path</strong> — build along it.</li>
+        <li><strong>Design the maze first:</strong> drag from the green top edge to the red bottom edge, then hit <strong>Done Path</strong>.</li>
+        <li>Tap or click an <strong>empty tile</strong> to place a tower along your path.</li>
+        <li>Creeps follow <strong>your</strong> path — build along it.</li>
         <li>Click a tower to <strong>upgrade</strong>, right-click to <strong>sell</strong>.</li>
         <li>Hit <strong>Start Wave</strong> to send the next wave.</li>
         <li>Keep <strong>Lives</strong> above 0 — leaks cost one life each.</li>

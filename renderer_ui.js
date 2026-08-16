@@ -27,7 +27,13 @@
     enemies: [],    // list of {x, y, radius, color, hp, maxHp, hpPercent}
     damageNumbers: [], // list of {x, y, text, ttl}
     flashes: [],    // list of {x, y, ttl} red hit flashes
-    hoverTile: null // {row, col} under the mouse cursor
+    hoverTile: null, // {row, col} under the mouse cursor
+    // Path design: renderer-local drawing state for the player-designed maze.
+    pathDesign: {
+      active: false,      // true only before wave 1 and not yet committed
+      drawn: [],          // ordered cells the player has drawn so far
+      committed: false    // true once the drawn path has been accepted
+    }
   };
 
   // Tower type currently selected in the HUD (renderer UI concern only).
@@ -145,6 +151,37 @@
           ctx.strokeStyle = '#1e293b';
           ctx.lineWidth = 1;
           ctx.strokeRect(x + 0.5, y + 0.5, TILE_PX - 1, TILE_PY - 1);
+        }
+      }
+    }
+
+    // Draw the player's in-progress path design as a bright lane so they can
+    // see exactly what maze they're shaping before committing.
+    if (display.pathDesign.active && Array.isArray(display.pathDesign.drawn)) {
+      const drawn = display.pathDesign.drawn;
+      for (let i = 0; i < drawn.length; i++) {
+        const c = drawn[i];
+        const x = c.col * TILE_PX;
+        const y = c.row * TILE_PY;
+        const isStart = i === 0;
+        const isEnd = i === drawn.length - 1;
+        ctx.fillStyle = 'rgba(56,189,248,0.30)';
+        ctx.fillRect(x, y, TILE_PX, TILE_PY);
+        ctx.strokeStyle = 'rgba(56,189,248,0.85)';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(x + 1, y + 1, TILE_PX - 2, TILE_PY - 2);
+        // Mark the entry (top) and exit (bottom) ends with small markers.
+        if (isStart) {
+          ctx.fillStyle = '#22c55e';
+          ctx.beginPath();
+          ctx.arc(x + TILE_PX * 0.5, y + 6, 5, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        if (isEnd) {
+          ctx.fillStyle = '#f87171';
+          ctx.beginPath();
+          ctx.arc(x + TILE_PX * 0.5, y + TILE_PY - 6, 5, 0, Math.PI * 2);
+          ctx.fill();
         }
       }
     }
@@ -475,6 +512,31 @@
     if (livesEl) livesEl.textContent = String(display.lives);
     if (waveEl) waveEl.textContent = String(display.wave);
     if (nextWaveEl) nextWaveEl.textContent = nextWaveSummary(display.nextWave);
+
+    // Path design controls: show Done/Reset while designing, hide Start Wave.
+    const designing = display.pathDesign.active;
+    if (pathDoneBtn) pathDoneBtn.classList.toggle('hidden', !designing);
+    if (pathResetBtn) pathResetBtn.classList.toggle('hidden', !designing);
+    if (startBtn) startBtn.classList.toggle('hidden', designing);
+  }
+
+  // Draw the design-mode instruction banner over the canvas.
+  function drawPathDesignHud() {
+    if (!display.pathDesign.active) return;
+    ctx.save();
+    ctx.globalAlpha = 0.95;
+    ctx.fillStyle = '#1e293b';
+    roundRect(24, 20, canvas.width - 48, 34, 8);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(56,189,248,0.6)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    ctx.fillStyle = '#e2e8f0';
+    ctx.font = 'bold 13px sans-serif';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('Draw a maze from the green top edge to the red bottom edge, then hit Done.', 36, 37);
+    ctx.restore();
   }
 
   // ---------- Tower HUD panel ----------
@@ -532,6 +594,7 @@
     drawEnemies();
     drawFlashes();
     drawDamageNumbers();
+    drawPathDesignHud();
     updateHUD();
     updateTowerHud();
 
@@ -584,6 +647,22 @@
     if (s.grid) display.grid = s.grid;
     if (s.path) display.path = s.path;
 
+    // Path design state: only copy while the player can still design.
+    if (s.pathDesign && typeof s.pathDesign === 'object') {
+      display.pathDesign.active = !!s.pathDesign.active;
+      display.pathDesign.committed = !!s.pathDesign.committed;
+      // While designing, the renderer's local `drawn` array is the source of
+      // truth (it records the exact click/drag sequence). Computer A's snapshot
+      // may lag by a frame, so only adopt it once the design is committed.
+      if (!display.pathDesign.active) {
+        if (Array.isArray(s.pathDesign.drawn)) {
+          display.pathDesign.drawn = s.pathDesign.drawn.map(function (c) {
+            return { row: c.row, col: c.col };
+          });
+        }
+      }
+    }
+
     // Detect firing: a tower's cooldownFrac jumping from low to high means it shot.
     if (s.towers) {
       display.towers = s.towers;
@@ -616,20 +695,82 @@
   }
 
   // ---------- Mouse tracking (for hover range indicator) ----------
+  let designDragging = false;
   canvas.addEventListener('mousemove', function (evt) {
     const p = canvasPoint(evt);
-    display.hoverTile = tileAt(p.x, p.y) || null;
+    const tile = tileAt(p.x, p.y) || null;
+    display.hoverTile = tile;
+    // Drag-to-draw: while the mouse is down in path-design mode, keep chaining
+    // adjacent cells into the drawn path.
+    if (designDragging && display.pathDesign.active && tile) {
+      if (designAddCell(tile)) {
+        dispatchPathDraw();
+      }
+    }
+  });
+
+  canvas.addEventListener('mousedown', function (evt) {
+    if (display.pathDesign.active) designDragging = true;
+  });
+
+  window.addEventListener('mouseup', function () {
+    designDragging = false;
   });
 
   canvas.addEventListener('mouseleave', function () {
     display.hoverTile = null;
   });
 
-  // ---------- Click -> grid coords -> dispatch build / upgrade request ----------
+  // ---------- Path design helpers ----------
+  // Add a tile to the drawn path (only cardinally adjacent to the last tile,
+  // and never a blocked/scenery tile). Returns true if the tile was added.
+  function designAddCell(tile) {
+    const drawn = display.pathDesign.drawn;
+    if (drawn.length === 0) {
+      // The path must start on the top edge (row 0).
+      if (tile.row !== 0) return false;
+    } else {
+      const last = drawn[drawn.length - 1];
+      const dr = Math.abs(tile.row - last.row);
+      const dc = Math.abs(tile.col - last.col);
+      // Only a single cardinal step between consecutive tiles.
+      if (dr + dc !== 1) return false;
+      // No repeats (would create a loop).
+      const dup = drawn.some(function (c) {
+        return c.row === tile.row && c.col === tile.col;
+      });
+      if (dup) return false;
+    }
+    // Can't draw over scenery (blocked) tiles.
+    if (display.grid && display.grid[gridIndex(tile.row, tile.col)] === 2) return false;
+    drawn.push({ row: tile.row, col: tile.col });
+    return true;
+  }
+
+  // Push the current drawn cells to Computer A (it validates & stores them).
+  function dispatchPathDraw() {
+    window.dispatchEvent(
+      new CustomEvent(GAME_EVENTS.PATH_DRAW, {
+        detail: { cells: display.pathDesign.drawn.map(function (c) {
+          return { row: c.row, col: c.col };
+        }) }
+      })
+    );
+  }
+
+  // ---------- Click -> grid coords -> dispatch build / upgrade / path request ----------
   canvas.addEventListener('click', function (evt) {
     const p = canvasPoint(evt);
     const tile = tileAt(p.x, p.y);
     if (!tile) return;
+
+    // Path design mode: clicks draw the creep lane instead of building.
+    if (display.pathDesign.active) {
+      if (designAddCell(tile)) {
+        dispatchPathDraw();
+      }
+      return;
+    }
 
     const tower = display.towers.find(function (t) {
       return t.row === tile.row && t.col === tile.col;
@@ -765,6 +906,44 @@
       })
     );
   });
+
+  // ---------- Path design buttons (Done / Reset) ----------
+  const pathDoneBtn = document.getElementById('path-done');
+  const pathResetBtn = document.getElementById('path-reset');
+  if (pathDoneBtn) {
+    pathDoneBtn.addEventListener('click', function () {
+      if (!display.pathDesign.active) return;
+      window.dispatchEvent(new CustomEvent(GAME_EVENTS.COMMIT_PATH, { detail: {} }));
+    });
+  }
+  if (pathResetBtn) {
+    pathResetBtn.addEventListener('click', function () {
+      if (!display.pathDesign.active) return;
+      // Clear the renderer-local drawing so the design starts fresh.
+      display.pathDesign.drawn.length = 0;
+      window.dispatchEvent(new CustomEvent(GAME_EVENTS.RESET_PATH, { detail: {} }));
+    });
+  }
+
+  // Path status feedback (valid/invalid) — brief toast.
+  function onPathStatus(evt) {
+    const d = evt.detail || {};
+    if (!toastEl) toastEl = document.getElementById('toast');
+    if (!toastEl) return;
+    if (d.ok) {
+      toastEl.textContent = 'Path locked in!';
+      toastEl.style.borderColor = '#38bdf8';
+      toastEl.style.color = '#38bdf8';
+    } else {
+      const reason = d.reason === 'reset' ? 'Path reset to default.'
+        : 'Invalid path — needs to run from the top edge to the bottom edge.';
+      toastEl.textContent = reason;
+      toastEl.style.borderColor = '#f87171';
+      toastEl.style.color = '#f87171';
+    }
+    toastEl.classList.add('show');
+    toastTimer = TOAST_TTL;
+  }
 
   // ---------- Start Wave button ----------
   const startBtn = document.getElementById('start-wave');
@@ -933,6 +1112,9 @@
     display.towers = [];
     display.enemies = [];
     display.hoverTile = null;
+    display.pathDesign.active = false;
+    display.pathDesign.drawn = [];
+    display.pathDesign.committed = false;
   }
 
   // ---------- Victory overlay ----------
@@ -981,6 +1163,7 @@
   window.addEventListener(GAME_EVENTS.WAVE_CLEARED, onWaveCleared);
   window.addEventListener(GAME_EVENTS.VICTORY, onVictory);
   window.addEventListener(GAME_EVENTS.RESTART, onRestart);
+  window.addEventListener(GAME_EVENTS.PATH_STATUS, onPathStatus);
 
   // ---------- Onboarding overlay dismiss ----------
   // The how-to overlay is shown on first load. Dismissing it hides the

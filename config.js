@@ -34,5 +34,9 @@ const GAME_EVENTS = {
   BOSS_MODIFIER: 'td:boss_modifier',       // Sent by B -> A applies the chosen boss modifier
   WAVE_CLEARED: 'td:wave_cleared',         // Sent by A -> B shows the income toast
   VICTORY: 'td:victory',                 // Sent by A -> B shows the victory overlay
-  GAME_OVER: 'td:game_over'              // Sent by A -> Used by B to show the game-over overlay
+  GAME_OVER: 'td:game_over',             // Sent by A -> Used by B to show the game-over overlay
+  PATH_DRAW: 'td:path_draw',             // Sent by B -> A stores the drawn path cells during design
+  COMMIT_PATH: 'td:commit_path',         // Sent by B -> A validates & commits the drawn path
+  RESET_PATH: 'td:reset_path',           // Sent by B -> A resets the path back to the default
+  PATH_STATUS: 'td:path_status'          // Sent by A -> B reports path validation result
 };
