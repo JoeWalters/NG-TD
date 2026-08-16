@@ -203,7 +203,11 @@
     sniper: '#a78bfa',
     cannon: '#f87171',
     splash: '#22c55e',
-    frost: '#22d3ee'
+    frost: '#22d3ee',
+    bounty: '#f97316',
+    buff: '#facc15',
+    magnet: '#e879f9',
+    redirect: '#34d399'
   };
 
   function drawTowers() {
@@ -325,6 +329,51 @@
         ctx.beginPath();
         ctx.arc(cx, cy, 6, 0, Math.PI * 2);
         ctx.fill();
+      } else if (t.type === 'bounty') {
+        // A coin: circular body with a dollar-style notch.
+        ctx.fillStyle = color;
+        ctx.beginPath();
+        ctx.arc(cx, cy, 10, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = 'rgba(255,255,255,0.25)';
+        ctx.fillRect(cx - 8, cy - 4, 16, 4);
+        ctx.fillRect(cx - 2, cy - 8, 4, 16);
+      } else if (t.type === 'buff') {
+        // A radiating star / sparkle (aura tower).
+        ctx.fillStyle = 'rgba(0,0,0,0.25)';
+        for (let i = 0; i < 4; i++) {
+          ctx.save();
+          ctx.translate(cx, cy);
+          ctx.rotate(i * Math.PI / 2);
+          ctx.fillRect(-2, -11, 4, 22);
+          ctx.restore();
+        }
+        ctx.fillStyle = color;
+        ctx.beginPath();
+        ctx.arc(cx, cy, 6, 0, Math.PI * 2);
+        ctx.fill();
+      } else if (t.type === 'magnet') {
+        // A horseshoe magnet: two prongs plus a connecting bar.
+        ctx.fillStyle = 'rgba(0,0,0,0.25)';
+        ctx.fillRect(cx - 7, cy - 6, 14, 5);
+        ctx.fillRect(cx - 7, cy + 1, 3, 8);
+        ctx.fillRect(cx + 4, cy + 1, 3, 8);
+        ctx.fillStyle = color;
+        ctx.fillRect(cx - 7, cy - 7, 14, 4);
+      } else if (t.type === 'redirect') {
+        // A curved arrow: an arc with a chevron head.
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.arc(cx, cy, 8, Math.PI * 0.1, Math.PI * 0.9);
+        ctx.stroke();
+        ctx.fillStyle = color;
+        ctx.beginPath();
+        ctx.moveTo(cx + 8, cy - 3);
+        ctx.lineTo(cx + 12, cy + 2);
+        ctx.lineTo(cx + 6, cy + 4);
+        ctx.closePath();
+        ctx.fill();
       } else {
         // Basic: single forward barrel
         ctx.fillStyle = 'rgba(0,0,0,0.25)';
@@ -372,6 +421,47 @@
         ctx.beginPath();
         ctx.arc(x + TILE_PX * 0.5, y + TILE_PY * 0.5, TILE_PX * 0.42, 0, Math.PI * 2 * frac);
         ctx.stroke();
+      }
+
+      // ----- Passive utility auras (always visible so the player can read
+      // the field effect even without hovering the tower) -----
+      if (typeof t.range === 'number' && t.range <= 20) {
+        const auraRadius = t.range * TILE_PX;
+        const acx = x + TILE_PX * 0.5;
+        const acy = y + TILE_PY * 0.5;
+        if (t.type === 'buff') {
+          ctx.strokeStyle = 'rgba(250,204,21,0.55)';
+          ctx.setLineDash([6, 5]);
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.arc(acx, acy, auraRadius, 0, Math.PI * 2);
+          ctx.stroke();
+          ctx.setLineDash([]);
+          ctx.fillStyle = 'rgba(250,204,21,0.06)';
+          ctx.beginPath();
+          ctx.arc(acx, acy, auraRadius, 0, Math.PI * 2);
+          ctx.fill();
+        } else if (t.type === 'magnet') {
+          ctx.strokeStyle = 'rgba(232,121,249,0.5)';
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.arc(acx, acy, auraRadius, 0, Math.PI * 2);
+          ctx.stroke();
+          ctx.fillStyle = 'rgba(232,121,249,0.05)';
+          ctx.beginPath();
+          ctx.arc(acx, acy, auraRadius, 0, Math.PI * 2);
+          ctx.fill();
+        } else if (t.type === 'redirect') {
+          ctx.strokeStyle = 'rgba(52,211,153,0.5)';
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.arc(acx, acy, auraRadius, 0, Math.PI * 2);
+          ctx.stroke();
+          ctx.fillStyle = 'rgba(52,211,153,0.05)';
+          ctx.beginPath();
+          ctx.arc(acx, acy, auraRadius, 0, Math.PI * 2);
+          ctx.fill();
+        }
       }
     }
   }
@@ -978,8 +1068,8 @@
   }
 
   // ---------- Tower type selector (renderer UI concern) ----------
-  // The order of TOWER_ORDER must match the hotkeys 1..5.
-  const TOWER_ORDER = ['basic', 'sniper', 'cannon', 'splash', 'frost'];
+  // The order of TOWER_ORDER must match the hotkeys 1..9.
+  const TOWER_ORDER = ['basic', 'sniper', 'cannon', 'splash', 'frost', 'bounty', 'buff', 'magnet', 'redirect'];
 
   function selectType(type) {
     selectedType = type;
@@ -994,9 +1084,9 @@
     });
   });
 
-  // Hotkeys 1..5 select the tower type in TOWER_ORDER (mirrors the HUD buttons).
+  // Hotkeys 1..9 select the tower type in TOWER_ORDER (mirrors the HUD buttons).
   window.addEventListener('keydown', function (evt) {
-    const idx = ['1', '2', '3', '4', '5'].indexOf(evt.key);
+    const idx = ['1', '2', '3', '4', '5', '6', '7', '8', '9'].indexOf(evt.key);
     if (idx < 0 || idx >= TOWER_ORDER.length) return;
     if (evt.target && /INPUT|TEXTAREA/.test(evt.target.tagName)) return;
     selectType(TOWER_ORDER[idx]);

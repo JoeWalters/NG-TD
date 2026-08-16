@@ -9,11 +9,22 @@
   // range is expressed in tiles (renderer converts to px when <= 20).
   // splash towers deal area damage: splashRadius in tiles, splashDamage per hit.
   const TOWERS = {
-    basic:  { cost: 50, damage: 10, range: 2.5, fireRate: 1.0,  color: '#38bdf8', splash: false },
-    sniper: { cost: 80, damage: 25, range: 5.0, fireRate: 0.5,  color: '#a78bfa', splash: false },
-    cannon: { cost: 60, damage: 20, range: 3.0, fireRate: 0.75, color: '#f87171', splash: false },
-    splash: { cost: 90, damage: 6,  range: 2.5, fireRate: 0.6,  color: '#22c55e', splash: true, splashRadius: 1.5, splashDamage: 6 },
-    frost:  { cost: 70, damage: 5,  range: 3.0, fireRate: 0.8,  color: '#22d3ee', splash: false, slow: true, slowFactor: 0.4, slowDuration: 2.0 }
+    basic:  { cost: 50, damage: 10, range: 2.5, fireRate: 1.0,  color: '#38bdf8', splash: false, attack: true },
+    sniper: { cost: 80, damage: 25, range: 5.0, fireRate: 0.5,  color: '#a78bfa', splash: false, attack: true },
+    cannon: { cost: 60, damage: 20, range: 3.0, fireRate: 0.75, color: '#f87171', splash: false, attack: true },
+    splash: { cost: 90, damage: 6,  range: 2.5, fireRate: 0.6,  color: '#22c55e', splash: true, splashRadius: 1.5, splashDamage: 6, attack: true },
+    frost:  { cost: 70, damage: 5,  range: 3.0, fireRate: 0.8,  color: '#22d3ee', splash: false, slow: true, slowFactor: 0.4, slowDuration: 2.0, attack: true },
+    // Utility towers don't attack; each has a passive field effect.
+    // Bounty: pays bonus cash for every creep killed inside its range.
+    bounty:  { cost: 100, damage: 0, range: 2.5, fireRate: 0, color: '#f97316', splash: false, attack: false, bounty: true, bountyBonus: 6 },
+    // Buff: a radius aura that boosts the damage of nearby towers.
+    buff:    { cost: 110, damage: 0, range: 2.0, fireRate: 0, color: '#facc15', splash: false, attack: false, buff: true, buffDamageMult: 1.4 },
+    // Magnet: gently pulls creeps inside its radius toward it, dragging them
+    // off the lane so other towers get an easier shot.
+    magnet:  { cost: 120, damage: 0, range: 2.5, fireRate: 0, color: '#e879f9', splash: false, attack: false, magnet: true, pullSpeed: 26 },
+    // Redirect: teleports creeps that enter its inner zone a few waypoints
+    // ahead, effectively rerouting the lane past this section (a shortcut).
+    redirect:{ cost: 130, damage: 0, range: 1.2, fireRate: 0, color: '#34d399', splash: false, attack: false, redirect: true, redirectSkip: 2 }
   };
 
   // ---------- Enemy / wave constants ----------
@@ -400,19 +411,87 @@
   }
 
   // ---------- Tower targeting & damage ----------
+  // Compute a tower's effective damage: base damage at its level, multiplied
+  // by any buff auras from nearby buff towers.
+  function effectiveDamage(t) {
+    const def = TOWERS[t.type];
+    let dmg = towerDamage(def, t.level);
+    const tx = (t.col + 0.5) * TILE;
+    const ty = (t.row + 0.5) * TILE;
+    for (const b of state.towers) {
+      const bdef = TOWERS[b.type];
+      if (!bdef || !bdef.buff) continue;
+      const brng = towerRange(bdef, b.level) * TILE;
+      if (dist(tx, ty, (b.col + 0.5) * TILE, (b.row + 0.5) * TILE) <= brng) {
+        dmg *= bdef.buffDamageMult;
+      }
+    }
+    return dmg;
+  }
+
+  // Grant a bounty tower its bonus cash when a creep dies inside its range.
+  // Called after any kill so utility towers share the same kill pipeline.
+  function bountyOnKill(deadX, deadY) {
+    for (const b of state.towers) {
+      const bdef = TOWERS[b.type];
+      if (!bdef || !bdef.bounty) continue;
+      const brng = towerRange(bdef, b.level) * TILE;
+      if (dist((b.col + 0.5) * TILE, (b.row + 0.5) * TILE, deadX, deadY) <= brng) {
+        state.cash += bdef.bountyBonus;
+      }
+    }
+  }
+
   function updateTowers(dt) {
     for (const t of state.towers) {
       const def = TOWERS[t.type];
-      const dmg = towerDamage(def, t.level);
       const rng = towerRange(def, t.level);
+      const tx = (t.col + 0.5) * TILE;
+      const ty = (t.row + 0.5) * TILE;
+      const rangePx = rng * TILE;
+
+      // ----- Utility towers (no attack) -----
+      if (def.magnet) {
+        // Pull every creep inside the magnet's radius toward its center.
+        for (const e of state.enemies) {
+          const d = dist(tx, ty, e.x, e.y);
+          if (d > rangePx || d === 0) continue;
+          const pull = def.pullSpeed * dt;
+          const step = Math.min(pull, d);
+          e.x += ((tx - e.x) / d) * step;
+          e.y += ((ty - e.y) / d) * step;
+        }
+        dirty = true;
+        continue;
+      }
+      if (def.redirect) {
+        // Teleport creeps inside the redirect zone a few waypoints ahead.
+        for (let i = state.enemies.length - 1; i >= 0; i--) {
+          const e = state.enemies[i];
+          if (dist(tx, ty, e.x, e.y) > rangePx) continue;
+          e.pathIndex = Math.min(WAYPOINTS.length - 1, e.pathIndex + def.redirectSkip);
+          e.x = WAYPOINTS[e.pathIndex].x;
+          e.y = WAYPOINTS[e.pathIndex].y;
+        }
+        dirty = true;
+        continue;
+      }
+      // Bounty towers are purely economic: they never attack or trigger.
+      if (def.bounty) {
+        dirty = true;
+        continue;
+      }
+      if (def.buff) {
+        dirty = true;
+        continue;
+      }
+
+      // ----- Attack towers -----
+      const dmg = effectiveDamage(t);
       t.cooldown -= dt;
       if (t.cooldown > 0) continue;
       // A tower that is recharging has a visible cooldown -> state changed.
       dirty = true;
-
-      const tx = (t.col + 0.5) * TILE;
-      const ty = (t.row + 0.5) * TILE;
-      const rangePx = rng * TILE;
 
       // Pick a target within range using this tower's targeting mode.
       const best = pickTarget(tx, ty, rangePx, t.targetMode);
@@ -437,8 +516,10 @@
 
           if (e.hp <= 0) {
             state.enemies.splice(i, 1);
-            state.cash += killReward(e.type, e.rewardMult);
+            const reward = killReward(e.type, e.rewardMult);
+            state.cash += reward;
             state.kills++;
+            bountyOnKill(e.x, e.y);
           }
         }
       } else {
@@ -455,8 +536,10 @@
         if (best.hp <= 0) {
           const idx = state.enemies.indexOf(best);
           if (idx >= 0) state.enemies.splice(idx, 1);
-          state.cash += killReward(best.type, best.rewardMult);
+          const reward = killReward(best.type, best.rewardMult);
+          state.cash += reward;
           state.kills++;
+          bountyOnKill(best.x, best.y);
         }
       }
     }
@@ -519,11 +602,15 @@
       gameOver: state.gameOver,
       nextWave: buildWaveQueue(state.wave + 1),
       towerTypes: {
-        basic:  TOWERS.basic,
-        sniper: TOWERS.sniper,
-        cannon: TOWERS.cannon,
-        splash: TOWERS.splash,
-        frost:  TOWERS.frost
+        basic:    TOWERS.basic,
+        sniper:   TOWERS.sniper,
+        cannon:   TOWERS.cannon,
+        splash:   TOWERS.splash,
+        frost:    TOWERS.frost,
+        bounty:   TOWERS.bounty,
+        buff:     TOWERS.buff,
+        magnet:   TOWERS.magnet,
+        redirect: TOWERS.redirect
       },
       grid: state.grid,
       path: PATH_CELLS,

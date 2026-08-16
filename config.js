@@ -13,7 +13,11 @@ const TOWER_ROLES = {
   sniper: 'Long range. Picks off one target at a time, high damage.',
   cannon: 'Big hits. Slow, heavy single-target damage.',
   splash: 'Area damage. Hits every creep near its target.',
-  frost: 'Slows enemies. Low damage, keeps the lane safe.'
+  frost: 'Slows enemies. Low damage, keeps the lane safe.',
+  bounty: 'Pays bonus cash for every creep killed inside its range.',
+  buff: 'Aura that boosts the damage of nearby towers.',
+  magnet: 'Gently pulls creeps inside its radius toward it, dragging them off the lane.',
+  redirect: 'Teleports creeps that enter its zone a few steps ahead along the path.'
 };
 
 // Standardized Event Names both A and B must use
