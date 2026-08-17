@@ -48,11 +48,14 @@
 
   // Enemy type definitions.
   // normal: standard creep | scout: half HP, double speed | tank: high HP, slow | boss: very high HP.
+  // shielded: armored creep — resists single-target shots unless splash/pierce | regener: heals over time.
   const ENEMY_TYPES = {
-    normal: { hp: ENEMY_HP, speed: ENEMY_SPEED, radius: ENEMY_RADIUS, color: ENEMY_COLOR },
-    scout:  { hp: ENEMY_HP * 0.5, speed: ENEMY_SPEED * 2, radius: ENEMY_RADIUS, color: '#22d3ee' },
-    tank:   { hp: ENEMY_HP * 4,  speed: ENEMY_SPEED * 0.6, radius: 18, color: '#a16207' },
-    boss:   { hp: ENEMY_HP * 15, speed: ENEMY_SPEED * 0.5, radius: 26, color: '#dc2626' }
+    normal:   { hp: ENEMY_HP, speed: ENEMY_SPEED, radius: ENEMY_RADIUS, color: ENEMY_COLOR },
+    scout:    { hp: ENEMY_HP * 0.5, speed: ENEMY_SPEED * 2, radius: ENEMY_RADIUS, color: '#22d3ee' },
+    tank:     { hp: ENEMY_HP * 4,  speed: ENEMY_SPEED * 0.6, radius: 18, color: '#a16207' },
+    boss:     { hp: ENEMY_HP * 15, speed: ENEMY_SPEED * 0.5, radius: 26, color: '#dc2626' },
+    shielded: { hp: ENEMY_HP * 1.6, speed: ENEMY_SPEED * 0.85, radius: ENEMY_RADIUS, color: '#94a3b8', shield: true, shieldResist: 0.4 },
+    regener:  { hp: ENEMY_HP * 1.3, speed: ENEMY_SPEED, radius: ENEMY_RADIUS, color: '#4ade80', regen: true, regenRate: 3 }
   };
 
   // Kill rewards per enemy type (base KILL_REWARD is for normal creeps).
@@ -60,7 +63,9 @@
     normal: 8,
     scout:  8,
     tank:   20,
-    boss:   100
+    boss:   100,
+    shielded: 16,
+    regener:  14
   };
 
   // Slow effect constants: applied by frost towers to creeps in range.
@@ -219,14 +224,33 @@
     1: ['normal', 'normal', 'normal', 'normal', 'normal', 'normal'],
     2: ['normal', 'normal', 'scout', 'normal', 'normal', 'scout', 'normal', 'normal'],
     3: ['normal', 'normal', 'normal', 'normal', 'tank', 'normal', 'normal', 'scout', 'normal', 'normal'],
-    4: ['normal', 'normal', 'scout', 'normal', 'normal', 'tank', 'scout', 'normal', 'normal', 'normal', 'scout', 'normal'],
+    4: ['normal', 'normal', 'scout', 'shielded', 'normal', 'tank', 'scout', 'shielded', 'normal', 'normal', 'scout', 'normal'],
     5: ['boss', 'tank', 'normal', 'scout', 'normal', 'tank', 'scout', 'normal', 'normal', 'tank', 'scout', 'normal', 'normal', 'scout'],
-    6: ['normal', 'normal', 'scout', 'normal', 'tank', 'scout', 'normal', 'normal', 'tank', 'scout', 'normal', 'normal', 'scout', 'normal', 'tank', 'scout'],
+    6: ['normal', 'shielded', 'scout', 'normal', 'regener', 'scout', 'normal', 'shielded', 'tank', 'scout', 'normal', 'normal', 'scout', 'regener', 'tank', 'scout'],
     7: ['normal', 'tank', 'scout', 'normal', 'normal', 'scout', 'tank', 'normal', 'scout', 'normal', 'normal', 'tank', 'scout', 'normal', 'scout', 'normal', 'tank', 'scout'],
-    8: ['normal', 'scout', 'tank', 'scout', 'normal', 'normal', 'tank', 'scout', 'normal', 'scout', 'tank', 'normal', 'scout', 'normal', 'normal', 'tank', 'scout', 'scout', 'normal', 'tank'],
+    8: ['shielded', 'scout', 'tank', 'shielded', 'normal', 'regener', 'tank', 'scout', 'normal', 'scout', 'regener', 'tank', 'scout', 'shielded', 'normal', 'tank', 'scout', 'scout', 'regener', 'tank'],
     9: ['normal', 'tank', 'scout', 'tank', 'normal', 'scout', 'normal', 'tank', 'scout', 'normal', 'scout', 'tank', 'normal', 'tank', 'scout', 'normal', 'scout', 'tank', 'normal', 'scout', 'tank', 'scout'],
     10: ['boss', 'tank', 'tank', 'scout', 'normal', 'scout', 'tank', 'normal', 'scout', 'tank', 'scout', 'normal', 'tank', 'scout', 'normal', 'scout', 'tank', 'normal', 'scout', 'tank', 'scout', 'normal', 'tank', 'scout']
   };
+
+  // Flavor names for each wave, so each "pack" has a distinct identity that is
+  // telegraphed in the Next-wave HUD before the wave begins. Waves past the
+  // table fall back to a generated "Wave N" style label.
+  const WAVE_NAMES = {
+    1: 'First Contact',
+    2: 'Scout Rush',
+    3: 'Tank Thud',
+    4: 'Mixed Company',
+    5: 'The Boss Arrives',
+    6: 'Iron March',
+    7: 'Vanguard Swarm',
+    8: 'Heavy Hitters',
+    9: 'Rampage',
+    10: 'Titan Siege'
+  };
+  function waveNameFor(wave) {
+    return WAVE_NAMES[wave] || 'Wave ' + wave;
+  }
 
   // Wave / spawn state: spawnQueue is now an array of enemy types still to spawn.
   let spawnQueue = [];   // enemy types still to spawn this wave
@@ -314,6 +338,11 @@
       radius: def.radius,
       color: def.color,
       slowTimer: 0,             // seconds remaining of a slow effect
+      shield: !!def.shield,     // armored — resists single-target shots
+      shieldResist: def.shieldResist != null ? def.shieldResist : 0.4,
+      regen: !!def.regen,       // heals over time unless recently damaged
+      regenRate: def.regenRate != null ? def.regenRate : 3,
+      regenTimer: 0,            // seconds a hit suppresses regen (0 = healing)
       rewardMult: rewardMult    // extra cash multiplier on kill
     });
 
@@ -374,6 +403,17 @@
     if (state.enemies.length > 0) dirty = true; // creeps move -> state changed
     for (let i = state.enemies.length - 1; i >= 0; i--) {
       const e = state.enemies[i];
+      // Regenerating creeps heal over time unless recently damaged. Healing
+      // only matters if they are hurt, so skip at full HP.
+      if (e.regen && e.hp < e.maxHp) {
+        if (e.regenTimer > 0) {
+          e.regenTimer = Math.max(0, e.regenTimer - dt);
+        } else {
+          const healed = e.regenRate * dt;
+          e.hp = Math.min(e.maxHp, e.hp + healed);
+          dirty = true;
+        }
+      }
       const target = WAYPOINTS[e.pathIndex];
       const dx = target.x - e.x;
       const dy = target.y - e.y;
@@ -430,6 +470,25 @@
   }
 
   // Grant a bounty tower its bonus cash when a creep dies inside its range.
+  // Armor resistance: a shielded creep shrugs off part of any single-target
+  // hit (unless the tower is splash/pierce, which bypasses the shield).
+  // `isSplash` marks an AOE/piercing attack that ignores shield resistance.
+  function damageToEnemy(e, baseDmg, isSplash) {
+    if (e.shield && !isSplash) {
+      const def = ENEMY_TYPES[e.type];
+      const resist = def && def.shieldResist != null ? def.shieldResist : 0.4;
+      return baseDmg * resist;
+    }
+    return baseDmg;
+  }
+
+  // A regenerating creep stops healing for a short window after taking damage.
+  // Called after any hit so both single-target and splash share the same rule.
+  const REGEN_STUN = 2.0; // seconds a hit suppresses regeneration
+  function noteDamageTaken(e) {
+    if (e.regen) e.regenTimer = REGEN_STUN;
+  }
+
   // Called after any kill so utility towers share the same kill pipeline.
   function bountyOnKill(deadX, deadY) {
     for (const b of state.towers) {
@@ -511,8 +570,11 @@
           const amount = d <= splashPx ? (frosted ? dmg * FROST_SPLASH_BONUS : dmg) : 0;
           if (amount <= 0) continue;
 
-          e.hp -= amount;
-          emit(GAME_EVENTS.ENEMY_DAMAGED, { x: e.x, y: e.y, amount: amount });
+          // Splash/pierce bypasses shields (armor needs splash/pierce).
+          const applied = damageToEnemy(e, amount, true);
+          e.hp -= applied;
+          noteDamageTaken(e);
+          emit(GAME_EVENTS.ENEMY_DAMAGED, { x: e.x, y: e.y, amount: applied });
 
           if (e.hp <= 0) {
             state.enemies.splice(i, 1);
@@ -524,8 +586,11 @@
         }
       } else {
         // Single-target tower: damage only the primary target.
-        best.hp -= dmg;
-        emit(GAME_EVENTS.ENEMY_DAMAGED, { x: best.x, y: best.y, amount: dmg });
+        // Shields resist single-target shots; splash/pierce bypasses them.
+        const applied = damageToEnemy(best, dmg, false);
+        best.hp -= applied;
+        noteDamageTaken(best);
+        emit(GAME_EVENTS.ENEMY_DAMAGED, { x: best.x, y: best.y, amount: applied });
 
         // Frost towers also apply a slow effect to the target.
         if (def.slow) {
@@ -601,6 +666,7 @@
       kills: state.kills,
       gameOver: state.gameOver,
       nextWave: buildWaveQueue(state.wave + 1),
+      waveName: waveNameFor(state.wave + 1),
       towerTypes: {
         basic:    TOWERS.basic,
         sniper:   TOWERS.sniper,
@@ -649,7 +715,9 @@
           hpPercent: e.hpPercent,
           vx: e.vx || 0,
           vy: e.vy || 0,
-          slow: e.slowTimer > 0
+          slow: e.slowTimer > 0,
+          shield: !!e.shield,
+          regen: !!e.regen
         };
       })
     };
@@ -967,6 +1035,24 @@
   window.addEventListener(GAME_EVENTS.PATH_DRAW, onPathDraw);
   window.addEventListener(GAME_EVENTS.COMMIT_PATH, onCommitPath);
   window.addEventListener(GAME_EVENTS.RESET_PATH, onResetPath);
+
+  // TEMP DEBUG HOOK (remove before commit)
+  window.__tdDebug = {
+    spawn: function (type) { spawnEnemy(type); dirty = true; },
+    state: function () {
+      return {
+        cash: state.cash, kills: state.kills, lives: state.lives, wave: state.wave,
+        enemies: state.enemies.map(function (e) {
+          return { type: e.type, hp: e.hp, maxHp: e.maxHp, shield: e.shield, regen: e.regen, regenTimer: e.regenTimer, pathIndex: e.pathIndex, x: e.x, y: e.y };
+        })
+      };
+    },
+    towers: function () {
+      return state.towers.map(function (t) {
+        return { row: t.row, col: t.col, type: t.type, cooldown: t.cooldown };
+      });
+    }
+  };
 
   // ---------- Start the logic loop ----------
   requestAnimationFrame(loop);

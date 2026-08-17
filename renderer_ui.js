@@ -19,6 +19,7 @@
     cash: 0,
     lives: 0,
     wave: 0,
+    waveName: '—',  // flavor name of the upcoming wave pack
     nextWave: [],   // enemy-type composition of the upcoming wave
     towerTypes: {}, // { type: {range, cost, ...} } for placement previews
     grid: [],       // tile types, row-major: [row][col] or flat [row*COLS+col]
@@ -490,7 +491,12 @@
       const r = e.radius || 12;
 
       // Slowed creeps get a frosty tint so the slow is visible at a glance.
-      ctx.fillStyle = e.slow ? '#7dd3fc' : (e.color || '#fbbf24');
+      // Shielded creeps get a steely gray body; regenerating creeps a green one.
+      let fill = e.color || '#fbbf24';
+      if (e.slow) fill = '#7dd3fc';
+      else if (e.shield) fill = '#94a3b8';
+      else if (e.regen) fill = '#4ade80';
+      ctx.fillStyle = fill;
       ctx.beginPath();
       ctx.arc(x, y, r, 0, Math.PI * 2);
       ctx.fill();
@@ -523,6 +529,22 @@
         ctx.lineWidth = 2;
         ctx.beginPath();
         ctx.arc(x, y, r + 3, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+      if (e.shield) {
+        // A steel ring marks an armored (shielded) creep.
+        ctx.strokeStyle = '#cbd5e1';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(x, y, r + 4, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+      if (e.regen) {
+        // A green ring marks a regenerating creep.
+        ctx.strokeStyle = '#22c55e';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(x, y, r + 4, 0, Math.PI * 2);
         ctx.stroke();
       }
 
@@ -590,7 +612,7 @@
     const counts = {};
     for (const t of waveTypes) counts[t] = (counts[t] || 0) + 1;
     const parts = [];
-    const order = ['normal', 'scout', 'tank', 'boss'];
+    const order = ['normal', 'scout', 'tank', 'boss', 'shielded', 'regener'];
     for (const t of order) {
       if (counts[t]) parts.push(counts[t] + ' ' + t + (counts[t] > 1 ? 's' : ''));
     }
@@ -602,6 +624,9 @@
     if (livesEl) livesEl.textContent = String(display.lives);
     if (waveEl) waveEl.textContent = String(display.wave);
     if (nextWaveEl) nextWaveEl.textContent = nextWaveSummary(display.nextWave);
+    // Telegraph the upcoming wave's flavor name alongside the composition.
+    const nameEl = document.getElementById('next-wave-name');
+    if (nameEl) nameEl.textContent = display.waveName;
 
     // Path design controls: show Done/Reset while designing, hide Start Wave.
     const designing = display.pathDesign.active;
@@ -731,6 +756,7 @@
     if (typeof s.cash === 'number') display.cash = s.cash;
     if (typeof s.lives === 'number') display.lives = s.lives;
     if (typeof s.wave === 'number') display.wave = s.wave;
+    if (typeof s.waveName === 'string') display.waveName = s.waveName;
     if (Array.isArray(s.nextWave)) display.nextWave = s.nextWave;
     if (s.towerTypes && typeof s.towerTypes === 'object') display.towerTypes = s.towerTypes;
 
