@@ -628,11 +628,13 @@
     const nameEl = document.getElementById('next-wave-name');
     if (nameEl) nameEl.textContent = display.waveName;
 
-    // Path design controls: show Done/Reset while designing, hide Start Wave.
+    // Path design controls: Done/Reset are optional tools shown while
+    // designing. Start Wave is ALWAYS available — path design is optional, so
+    // a player who skips it simply plays on the default S-curve maze.
     const designing = display.pathDesign.active;
     if (pathDoneBtn) pathDoneBtn.classList.toggle('hidden', !designing);
     if (pathResetBtn) pathResetBtn.classList.toggle('hidden', !designing);
-    if (startBtn) startBtn.classList.toggle('hidden', designing);
+    if (startBtn) startBtn.classList.remove('hidden');
   }
 
   // Draw the design-mode instruction banner over the canvas.
@@ -650,7 +652,7 @@
     ctx.font = 'bold 13px sans-serif';
     ctx.textAlign = 'left';
     ctx.textBaseline = 'middle';
-    ctx.fillText('Draw a maze from the green top edge to the red bottom edge, then hit Done.', 36, 37);
+    ctx.fillText('Optional: draw your own maze, or hit Start Wave for the default path.', 36, 37);
     ctx.restore();
   }
 
@@ -940,6 +942,24 @@
       const p = canvasPoint(t);
       display.hoverTile = tileAt(p.x, p.y) || null;
       touchActive = true;
+    }
+  }, { passive: true });
+
+  // touchmove keeps the hover tile (range ring + tower panel) live while the
+  // finger drags across tiles — matches the desktop mousemove behavior so
+  // mobile players can preview a tower's range ring before placing it.
+  canvas.addEventListener('touchmove', function (evt) {
+    if (!touchActive) return;
+    if (evt.touches && evt.touches.length > 0) {
+      const t = evt.touches[0];
+      const p = canvasPoint(t);
+      display.hoverTile = tileAt(p.x, p.y) || null;
+      // Drag-to-draw: while touching in path-design mode, chain adjacent cells.
+      if (display.pathDesign.active && display.hoverTile) {
+        if (designAddCell(display.hoverTile)) {
+          dispatchPathDraw();
+        }
+      }
     }
   }, { passive: true });
 

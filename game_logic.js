@@ -23,28 +23,30 @@
     // off the lane so other towers get an easier shot.
     magnet:  { cost: 120, damage: 0, range: 2.5, fireRate: 0, color: '#e879f9', splash: false, attack: false, magnet: true, pullSpeed: 26 },
     // Redirect: teleports creeps that enter its inner zone a few waypoints
-    // ahead, effectively rerouting the lane past this section (a shortcut).
+    // BACKWARD, making them re-walk that stretch so nearby towers get more shots.
     redirect:{ cost: 130, damage: 0, range: 1.2, fireRate: 0, color: '#34d399', splash: false, attack: false, redirect: true, redirectSkip: 2 }
   };
 
   // ---------- Enemy / wave constants ----------
+  // All balance tunables live in CONFIG.BALANCE (single source of truth);
+  // these aliases just make the rest of this module read naturally.
   const ENEMY_COLOR = '#fbbf24';
-  const ENEMY_RADIUS = 12;
-  const ENEMY_SPEED = 60;       // pixels per second
-  const ENEMY_HP = 75;
-  const KILL_REWARD = 8;        // base cash earned per kill
-  const SPAWN_INTERVAL = 0.9;   // seconds between spawns
-  const WAVE_ENEMY_COUNT = 6;   // base enemies per wave
-  const HP_PER_WAVE = 0.15;     // +15% enemy HP per wave
-  const COUNT_PER_WAVE = 2;     // +2 enemies per wave
-  const MAX_DT = 0.05;          // clamp dt to avoid huge jumps on tab switch
+  const ENEMY_RADIUS = CONFIG.BALANCE.ENEMY_RADIUS;
+  const ENEMY_SPEED = CONFIG.BALANCE.ENEMY_SPEED;   // pixels per second
+  const ENEMY_HP = CONFIG.BALANCE.ENEMY_HP;
+  const KILL_REWARD = CONFIG.BALANCE.KILL_REWARD;   // base cash earned per kill
+  const SPAWN_INTERVAL = CONFIG.BALANCE.SPAWN_INTERVAL; // seconds between spawns
+  const WAVE_ENEMY_COUNT = CONFIG.BALANCE.WAVE_ENEMY_COUNT; // base enemies per wave
+  const HP_PER_WAVE = CONFIG.BALANCE.HP_PER_WAVE;   // +15% enemy HP per wave
+  const COUNT_PER_WAVE = CONFIG.BALANCE.COUNT_PER_WAVE; // +2 enemies per wave
+  const MAX_DT = CONFIG.BALANCE.MAX_DT;             // clamp dt on tab switch
 
   // Clearing this wave wins the game (a concrete goal instead of endless waves).
-  const VICTORY_WAVE = 20;
+  const VICTORY_WAVE = CONFIG.BALANCE.VICTORY_WAVE;
 
   // Economy depth: earn interest on unspent cash each time a wave completes.
-  const INTEREST_RATE = 0.05;   // +5% of unspent cash per wave cleared
-  const INTEREST_CAP = 25;      // cap so hoarding can't snowball infinitely
+  const INTEREST_RATE = CONFIG.BALANCE.INTEREST_RATE; // +5% of unspent cash per wave
+  const INTEREST_CAP = CONFIG.BALANCE.INTEREST_CAP;   // cap so hoarding can't snowball
 
   // Enemy type definitions.
   // normal: standard creep | scout: half HP, double speed | tank: high HP, slow | boss: very high HP.
@@ -53,7 +55,7 @@
     normal:   { hp: ENEMY_HP, speed: ENEMY_SPEED, radius: ENEMY_RADIUS, color: ENEMY_COLOR },
     scout:    { hp: ENEMY_HP * 0.5, speed: ENEMY_SPEED * 2, radius: ENEMY_RADIUS, color: '#22d3ee' },
     tank:     { hp: ENEMY_HP * 4,  speed: ENEMY_SPEED * 0.6, radius: 18, color: '#a16207' },
-    boss:     { hp: ENEMY_HP * 15, speed: ENEMY_SPEED * 0.5, radius: 26, color: '#dc2626' },
+    boss:     { hp: ENEMY_HP * CONFIG.BALANCE.BOSS_HP_MULT, speed: ENEMY_SPEED * 0.5, radius: 26, color: '#dc2626' },
     shielded: { hp: ENEMY_HP * 1.6, speed: ENEMY_SPEED * 0.85, radius: ENEMY_RADIUS, color: '#94a3b8', shield: true, shieldResist: 0.4 },
     regener:  { hp: ENEMY_HP * 1.3, speed: ENEMY_SPEED, radius: ENEMY_RADIUS, color: '#4ade80', regen: true, regenRate: 3 }
   };
@@ -280,14 +282,14 @@
     return Math.sqrt(dx * dx + dy * dy);
   }
 
-  const MAX_LEVEL = 3;
+  const MAX_LEVEL = CONFIG.BALANCE.MAX_LEVEL;
   // Upgrading a tower from level L costs 60%^L of its base cost, so each
   // level is cheaper than the last (L1 = 60%, L2 = 36% of base). This is
   // the same formula the renderer's HUD shows, so the two never drift.
-  const UPGRADE_COST_MULT = 0.6;
-  const UPGRADE_DAMAGE_MULT = 1.25; // +25% damage per level
-  const UPGRADE_RANGE_MULT = 1.1;  // +10% range per level
-  const SELL_REFUND = 0.7;         // refund 70% of total invested on sell
+  const UPGRADE_COST_MULT = CONFIG.BALANCE.UPGRADE_COST_MULT;
+  const UPGRADE_DAMAGE_MULT = CONFIG.BALANCE.UPGRADE_DAMAGE_MULT; // +25% damage per level
+  const UPGRADE_RANGE_MULT = CONFIG.BALANCE.UPGRADE_RANGE_MULT;   // +10% range per level
+  const SELL_REFUND = CONFIG.BALANCE.SELL_REFUND;   // refund 70% of total invested
 
   // Effective stats at a given tower level (level 1 = base stats).
   function towerDamage(def, level) {
@@ -524,11 +526,13 @@
         continue;
       }
       if (def.redirect) {
-        // Teleport creeps inside the redirect zone a few waypoints ahead.
+        // Teleport creeps inside the redirect zone a few waypoints BACKWARD,
+        // so they must re-walk that stretch of the lane — giving your towers
+        // extra shots instead of letting the creeps shortcut toward the exit.
         for (let i = state.enemies.length - 1; i >= 0; i--) {
           const e = state.enemies[i];
           if (dist(tx, ty, e.x, e.y) > rangePx) continue;
-          e.pathIndex = Math.min(WAYPOINTS.length - 1, e.pathIndex + def.redirectSkip);
+          e.pathIndex = Math.max(1, e.pathIndex - def.redirectSkip);
           e.x = WAYPOINTS[e.pathIndex].x;
           e.y = WAYPOINTS[e.pathIndex].y;
         }
@@ -658,6 +662,19 @@
   }
 
   // ---------- Snapshot for the renderer ----------
+  // nextWave is expensive to build (preset copy / formula loop) and only
+  // changes when the wave number changes. Cache it per wave so we don't
+  // recompute it on every dirty STATE_UPDATED frame during active play.
+  let cachedNextWave = null;
+  let cachedNextWaveFor = -1;
+  function nextWaveFor(wave) {
+    if (cachedNextWaveFor !== wave) {
+      cachedNextWave = buildWaveQueue(wave);
+      cachedNextWaveFor = wave;
+    }
+    return cachedNextWave;
+  }
+
   function snapshot() {
     return {
       cash: state.cash,
@@ -665,7 +682,7 @@
       wave: state.wave,
       kills: state.kills,
       gameOver: state.gameOver,
-      nextWave: buildWaveQueue(state.wave + 1),
+      nextWave: nextWaveFor(state.wave + 1),
       waveName: waveNameFor(state.wave + 1),
       towerTypes: {
         basic:    TOWERS.basic,
