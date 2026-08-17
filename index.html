@@ -117,6 +117,17 @@
       white-space: nowrap;
     }
 
+    /* Flavor name of the upcoming wave pack, telegraphed below the mix. */
+    .stat .value.next-wave-name {
+      font-size: 11px;
+      font-weight: 400;
+      color: var(--accent);
+      text-align: left;
+      white-space: nowrap;
+      display: block;
+      line-height: 1.2;
+    }
+
     .hud-sep {
       width: 1px;
       align-self: stretch;
@@ -163,6 +174,22 @@
     }
 
     #start-wave:hover { filter: brightness(1.12); transform: translateY(-1px); }
+
+    /* ---- Path design buttons ---- */
+    #path-done, #path-reset {
+      background: var(--bg);
+      color: var(--text);
+      border: 1px solid var(--panel-border);
+      border-radius: 6px;
+      padding: 6px 12px;
+      font-size: 13px;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+    #path-done.hidden, #path-reset.hidden { display: none; }
+    #path-done { border-color: #22c55e; color: #22c55e; }
+    #path-done:hover { filter: brightness(1.15); }
+    #path-reset:hover { border-color: #f87171; color: #f87171; }
 
     /* ---- Control buttons (pause / speed) ---- */
     #controls {
@@ -229,6 +256,22 @@
     }
 
     #game-over.hidden { display: none; }
+
+    #victory {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      background: rgba(15, 23, 42, 0.85);
+      color: var(--text);
+      border-radius: 4px;
+      line-height: 1.2;
+    }
+
+    #victory.hidden { display: none; }
 
     .go-title {
       font-size: 28px;
@@ -476,9 +519,13 @@
     }
 
     /* ---- Income toast (wave-clear feedback) ---- */
+    /* Anchored to the top-center of the canvas wrap, which sits directly under
+       the slim HUD, so the toast never floats over the page or crowds the
+       play area on mobile (previously fixed at top:74px it could overlap the
+       canvas on small screens). */
     #toast {
-      position: fixed;
-      top: 74px;
+      position: absolute;
+      top: 8px;
       left: 50%;
       transform: translateX(-50%) translateY(-8px);
       background: rgba(15, 23, 42, 0.95);
@@ -579,6 +626,7 @@
     <div class="stat">
       <span class="label">Next</span>
       <span class="value next-wave" id="next-wave">—</span>
+      <span class="value next-wave-name" id="next-wave-name">—</span>
     </div>
   </header>
 
@@ -589,8 +637,14 @@
       <button class="type-btn" data-type="cannon">Cannon<span class="type-tip">Big hits. Slow, heavy single-target damage.</span></button>
       <button class="type-btn" data-type="splash">Splash<span class="type-tip">Area damage. Hits every creep near its target.</span></button>
       <button class="type-btn" data-type="frost">Frost<span class="type-tip">Slows enemies. Low damage, keeps the lane safe.</span></button>
+      <button class="type-btn" data-type="bounty">Bounty<span class="type-tip">Pays bonus cash for every creep killed inside its range.</span></button>
+      <button class="type-btn" data-type="buff">Buff<span class="type-tip">Aura that boosts the damage of nearby towers.</span></button>
+      <button class="type-btn" data-type="magnet">Magnet<span class="type-tip">Gently pulls creeps toward it, dragging them off the lane.</span></button>
+      <button class="type-btn" data-type="redirect">Redirect<span class="type-tip">Teleports creeps in its zone a few steps back — they re-walk that stretch.</span></button>
     </div>
     <span class="hud-sep"></span>
+    <button id="path-done" class="hidden">Done Path</button>
+    <button id="path-reset" class="hidden">Reset</button>
     <button id="start-wave">Start Wave</button>
     <span class="hud-sep"></span>
     <div id="controls">
@@ -619,12 +673,21 @@
     <div id="game-over" class="hidden">
       <div class="go-title">Game Over</div>
       <div class="go-sub">Reached wave <span id="game-over-wave">0</span></div>
+      <div class="go-sub">Kills: <span id="game-over-kills">0</span></div>
       <button id="play-again">Play Again</button>
     </div>
-  </div>
+    <div id="victory" class="hidden">
+      <div class="go-title">Victory!</div>
+      <div class="go-sub">You cleared all 20 waves.</div>
+      <div class="go-sub">Kills: <span id="victory-kills">0</span></div>
+      <button id="victory-again">Play Again</button>
+    </div>
 
-  <!-- Income toast: transient "+$X" feedback shown when a wave is cleared. -->
-  <div id="toast"></div>
+    <!-- Income toast: transient "+$X" feedback shown when a wave is cleared.
+         Lives inside the canvas wrap so it sits under the slim HUD and never
+         crowds the canvas on mobile. -->
+    <div id="toast"></div>
+  </div>
 
   <!-- Boss-choice modal: appears before a boss wave so the player can pick a modifier. -->
   <div id="boss-choice" class="hidden">
@@ -640,8 +703,9 @@
     <div class="howto-card">
       <h2>How to Play</h2>
       <ol>
-        <li>Tap or click an <strong>empty tile</strong> to place a tower.</li>
-        <li>Creeps follow the <strong>yellow path</strong> — build along it.</li>
+        <li><strong>Design the maze (optional):</strong> drag from the green top edge to the red bottom edge, then hit <strong>Done Path</strong> — or just hit <strong>Start Wave</strong> to play on the default path.</li>
+        <li>Tap or click an <strong>empty tile</strong> to place a tower along the path.</li>
+        <li>Creeps follow the path — build along it.</li>
         <li>Click a tower to <strong>upgrade</strong>, right-click to <strong>sell</strong>.</li>
         <li>Hit <strong>Start Wave</strong> to send the next wave.</li>
         <li>Keep <strong>Lives</strong> above 0 — leaks cost one life each.</li>

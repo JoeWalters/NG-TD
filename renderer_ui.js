@@ -19,6 +19,7 @@
     cash: 0,
     lives: 0,
     wave: 0,
+    waveName: '—',  // flavor name of the upcoming wave pack
     nextWave: [],   // enemy-type composition of the upcoming wave
     towerTypes: {}, // { type: {range, cost, ...} } for placement previews
     grid: [],       // tile types, row-major: [row][col] or flat [row*COLS+col]
@@ -27,7 +28,13 @@
     enemies: [],    // list of {x, y, radius, color, hp, maxHp, hpPercent}
     damageNumbers: [], // list of {x, y, text, ttl}
     flashes: [],    // list of {x, y, ttl} red hit flashes
-    hoverTile: null // {row, col} under the mouse cursor
+    hoverTile: null, // {row, col} under the mouse cursor
+    // Path design: renderer-local drawing state for the player-designed maze.
+    pathDesign: {
+      active: false,      // true only before wave 1 and not yet committed
+      drawn: [],          // ordered cells the player has drawn so far
+      committed: false    // true once the drawn path has been accepted
+    }
   };
 
   // Tower type currently selected in the HUD (renderer UI concern only).
@@ -90,14 +97,23 @@
 
   // ---------- Grid & path rendering ----------
   function drawGrid() {
+    // Precompute O(1) lookups once per frame so the per-cell loop avoids
+    // scanning the whole path/tower arrays on every tile (O(cells x N) -> O(cells)).
+    const pathSet = new Set();
+    if (Array.isArray(display.path)) {
+      for (const p of display.path) pathSet.add(p.row + ':' + p.col);
+    }
+    const occupiedSet = new Set();
+    if (Array.isArray(display.towers)) {
+      for (const t of display.towers) occupiedSet.add(t.row + ':' + t.col);
+    }
+
     for (let row = 0; row < ROWS; row++) {
       for (let col = 0; col < COLS; col++) {
         const x = col * TILE_PX;
         const y = row * TILE_PY;
         const cell = display.grid ? display.grid[gridIndex(row, col)] : undefined;
-        const isPath = display.path.some(
-          (p) => p.row === row && p.col === col
-        );
+        const isPath = pathSet.has(row + ':' + col);
 
         let fill = '#0f172a';          // empty
         if (isPath) fill = '#3b2f1f';  // path tile (sand/stone)
@@ -114,9 +130,7 @@
 
         // Onboarding highlight: every empty, unoccupied tile shows a faint
         // glow so new players can see exactly where towers may be built.
-        const occupied = display.towers.some(function (t) {
-          return t.row === row && t.col === col;
-        });
+        const occupied = occupiedSet.has(row + ':' + col);
         if (cell === 0 && !occupied) {
           ctx.fillStyle = 'rgba(56,189,248,0.07)';
           ctx.fillRect(x, y, TILE_PX, TILE_PY);
@@ -141,6 +155,37 @@
         }
       }
     }
+
+    // Draw the player's in-progress path design as a bright lane so they can
+    // see exactly what maze they're shaping before committing.
+    if (display.pathDesign.active && Array.isArray(display.pathDesign.drawn)) {
+      const drawn = display.pathDesign.drawn;
+      for (let i = 0; i < drawn.length; i++) {
+        const c = drawn[i];
+        const x = c.col * TILE_PX;
+        const y = c.row * TILE_PY;
+        const isStart = i === 0;
+        const isEnd = i === drawn.length - 1;
+        ctx.fillStyle = 'rgba(56,189,248,0.30)';
+        ctx.fillRect(x, y, TILE_PX, TILE_PY);
+        ctx.strokeStyle = 'rgba(56,189,248,0.85)';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(x + 1, y + 1, TILE_PX - 2, TILE_PY - 2);
+        // Mark the entry (top) and exit (bottom) ends with small markers.
+        if (isStart) {
+          ctx.fillStyle = '#22c55e';
+          ctx.beginPath();
+          ctx.arc(x + TILE_PX * 0.5, y + 6, 5, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        if (isEnd) {
+          ctx.fillStyle = '#f87171';
+          ctx.beginPath();
+          ctx.arc(x + TILE_PX * 0.5, y + TILE_PY - 6, 5, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+    }
   }
 
   // Darken (negative) or lighten (positive) a hex color by a percentage.
@@ -159,7 +204,11 @@
     sniper: '#a78bfa',
     cannon: '#f87171',
     splash: '#22c55e',
-    frost: '#22d3ee'
+    frost: '#22d3ee',
+    bounty: '#f97316',
+    buff: '#facc15',
+    magnet: '#e879f9',
+    redirect: '#34d399'
   };
 
   function drawTowers() {
@@ -281,6 +330,51 @@
         ctx.beginPath();
         ctx.arc(cx, cy, 6, 0, Math.PI * 2);
         ctx.fill();
+      } else if (t.type === 'bounty') {
+        // A coin: circular body with a dollar-style notch.
+        ctx.fillStyle = color;
+        ctx.beginPath();
+        ctx.arc(cx, cy, 10, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = 'rgba(255,255,255,0.25)';
+        ctx.fillRect(cx - 8, cy - 4, 16, 4);
+        ctx.fillRect(cx - 2, cy - 8, 4, 16);
+      } else if (t.type === 'buff') {
+        // A radiating star / sparkle (aura tower).
+        ctx.fillStyle = 'rgba(0,0,0,0.25)';
+        for (let i = 0; i < 4; i++) {
+          ctx.save();
+          ctx.translate(cx, cy);
+          ctx.rotate(i * Math.PI / 2);
+          ctx.fillRect(-2, -11, 4, 22);
+          ctx.restore();
+        }
+        ctx.fillStyle = color;
+        ctx.beginPath();
+        ctx.arc(cx, cy, 6, 0, Math.PI * 2);
+        ctx.fill();
+      } else if (t.type === 'magnet') {
+        // A horseshoe magnet: two prongs plus a connecting bar.
+        ctx.fillStyle = 'rgba(0,0,0,0.25)';
+        ctx.fillRect(cx - 7, cy - 6, 14, 5);
+        ctx.fillRect(cx - 7, cy + 1, 3, 8);
+        ctx.fillRect(cx + 4, cy + 1, 3, 8);
+        ctx.fillStyle = color;
+        ctx.fillRect(cx - 7, cy - 7, 14, 4);
+      } else if (t.type === 'redirect') {
+        // A curved arrow: an arc with a chevron head.
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.arc(cx, cy, 8, Math.PI * 0.1, Math.PI * 0.9);
+        ctx.stroke();
+        ctx.fillStyle = color;
+        ctx.beginPath();
+        ctx.moveTo(cx + 8, cy - 3);
+        ctx.lineTo(cx + 12, cy + 2);
+        ctx.lineTo(cx + 6, cy + 4);
+        ctx.closePath();
+        ctx.fill();
       } else {
         // Basic: single forward barrel
         ctx.fillStyle = 'rgba(0,0,0,0.25)';
@@ -329,6 +423,47 @@
         ctx.arc(x + TILE_PX * 0.5, y + TILE_PY * 0.5, TILE_PX * 0.42, 0, Math.PI * 2 * frac);
         ctx.stroke();
       }
+
+      // ----- Passive utility auras (always visible so the player can read
+      // the field effect even without hovering the tower) -----
+      if (typeof t.range === 'number' && t.range <= 20) {
+        const auraRadius = t.range * TILE_PX;
+        const acx = x + TILE_PX * 0.5;
+        const acy = y + TILE_PY * 0.5;
+        if (t.type === 'buff') {
+          ctx.strokeStyle = 'rgba(250,204,21,0.55)';
+          ctx.setLineDash([6, 5]);
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.arc(acx, acy, auraRadius, 0, Math.PI * 2);
+          ctx.stroke();
+          ctx.setLineDash([]);
+          ctx.fillStyle = 'rgba(250,204,21,0.06)';
+          ctx.beginPath();
+          ctx.arc(acx, acy, auraRadius, 0, Math.PI * 2);
+          ctx.fill();
+        } else if (t.type === 'magnet') {
+          ctx.strokeStyle = 'rgba(232,121,249,0.5)';
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.arc(acx, acy, auraRadius, 0, Math.PI * 2);
+          ctx.stroke();
+          ctx.fillStyle = 'rgba(232,121,249,0.05)';
+          ctx.beginPath();
+          ctx.arc(acx, acy, auraRadius, 0, Math.PI * 2);
+          ctx.fill();
+        } else if (t.type === 'redirect') {
+          ctx.strokeStyle = 'rgba(52,211,153,0.5)';
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.arc(acx, acy, auraRadius, 0, Math.PI * 2);
+          ctx.stroke();
+          ctx.fillStyle = 'rgba(52,211,153,0.05)';
+          ctx.beginPath();
+          ctx.arc(acx, acy, auraRadius, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
     }
   }
 
@@ -356,7 +491,12 @@
       const r = e.radius || 12;
 
       // Slowed creeps get a frosty tint so the slow is visible at a glance.
-      ctx.fillStyle = e.slow ? '#7dd3fc' : (e.color || '#fbbf24');
+      // Shielded creeps get a steely gray body; regenerating creeps a green one.
+      let fill = e.color || '#fbbf24';
+      if (e.slow) fill = '#7dd3fc';
+      else if (e.shield) fill = '#94a3b8';
+      else if (e.regen) fill = '#4ade80';
+      ctx.fillStyle = fill;
       ctx.beginPath();
       ctx.arc(x, y, r, 0, Math.PI * 2);
       ctx.fill();
@@ -389,6 +529,22 @@
         ctx.lineWidth = 2;
         ctx.beginPath();
         ctx.arc(x, y, r + 3, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+      if (e.shield) {
+        // A steel ring marks an armored (shielded) creep.
+        ctx.strokeStyle = '#cbd5e1';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(x, y, r + 4, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+      if (e.regen) {
+        // A green ring marks a regenerating creep.
+        ctx.strokeStyle = '#22c55e';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(x, y, r + 4, 0, Math.PI * 2);
         ctx.stroke();
       }
 
@@ -456,7 +612,7 @@
     const counts = {};
     for (const t of waveTypes) counts[t] = (counts[t] || 0) + 1;
     const parts = [];
-    const order = ['normal', 'scout', 'tank', 'boss'];
+    const order = ['normal', 'scout', 'tank', 'boss', 'shielded', 'regener'];
     for (const t of order) {
       if (counts[t]) parts.push(counts[t] + ' ' + t + (counts[t] > 1 ? 's' : ''));
     }
@@ -468,6 +624,36 @@
     if (livesEl) livesEl.textContent = String(display.lives);
     if (waveEl) waveEl.textContent = String(display.wave);
     if (nextWaveEl) nextWaveEl.textContent = nextWaveSummary(display.nextWave);
+    // Telegraph the upcoming wave's flavor name alongside the composition.
+    const nameEl = document.getElementById('next-wave-name');
+    if (nameEl) nameEl.textContent = display.waveName;
+
+    // Path design controls: Done/Reset are optional tools shown while
+    // designing. Start Wave is ALWAYS available — path design is optional, so
+    // a player who skips it simply plays on the default S-curve maze.
+    const designing = display.pathDesign.active;
+    if (pathDoneBtn) pathDoneBtn.classList.toggle('hidden', !designing);
+    if (pathResetBtn) pathResetBtn.classList.toggle('hidden', !designing);
+    if (startBtn) startBtn.classList.remove('hidden');
+  }
+
+  // Draw the design-mode instruction banner over the canvas.
+  function drawPathDesignHud() {
+    if (!display.pathDesign.active) return;
+    ctx.save();
+    ctx.globalAlpha = 0.95;
+    ctx.fillStyle = '#1e293b';
+    roundRect(24, 20, canvas.width - 48, 34, 8);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(56,189,248,0.6)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    ctx.fillStyle = '#e2e8f0';
+    ctx.font = 'bold 13px sans-serif';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('Optional: draw your own maze, or hit Start Wave for the default path.', 36, 37);
+    ctx.restore();
   }
 
   // ---------- Tower HUD panel ----------
@@ -488,18 +674,15 @@
       return;
     }
 
-    const def = display.towerTypes[tower.type];
-    const upgradeCost = def && def.cost != null
-      ? Math.round(def.cost * Math.pow(0.6, tower.level)) // same formula as game_logic
-      : null;
-
     const el = (id) => document.getElementById(id);
     el('th-title').textContent = tower.type.toUpperCase();
     el('th-level').textContent = String(tower.level);
-    el('th-damage').textContent = def ? String(Math.round(def.damage * Math.pow(1.25, tower.level - 1))) : '—';
-    el('th-range').textContent = def ? String(def.range * Math.pow(1.1, tower.level - 1)) : '—';
+    // Read effective stats straight from Computer A's snapshot so the HUD
+    // uses the exact same formulas as the simulation (no drift possible).
+    el('th-damage').textContent = typeof tower.damage === 'number' ? String(Math.round(tower.damage)) : '—';
+    el('th-range').textContent = typeof tower.range === 'number' ? String(tower.range) : '—';
     el('th-mode').textContent = String(tower.targetMode || 'nearest');
-    el('th-upgrade').textContent = upgradeCost != null ? String(upgradeCost) : '—';
+    el('th-upgrade').textContent = typeof tower.upgradeCost === 'number' ? String(tower.upgradeCost) : '—';
 
     // Per-tower role line: a one-phrase reminder of what this tower does.
     const roleEl = document.getElementById('th-role');
@@ -528,6 +711,7 @@
     drawEnemies();
     drawFlashes();
     drawDamageNumbers();
+    drawPathDesignHud();
     updateHUD();
     updateTowerHud();
 
@@ -574,11 +758,28 @@
     if (typeof s.cash === 'number') display.cash = s.cash;
     if (typeof s.lives === 'number') display.lives = s.lives;
     if (typeof s.wave === 'number') display.wave = s.wave;
+    if (typeof s.waveName === 'string') display.waveName = s.waveName;
     if (Array.isArray(s.nextWave)) display.nextWave = s.nextWave;
     if (s.towerTypes && typeof s.towerTypes === 'object') display.towerTypes = s.towerTypes;
 
     if (s.grid) display.grid = s.grid;
     if (s.path) display.path = s.path;
+
+    // Path design state: only copy while the player can still design.
+    if (s.pathDesign && typeof s.pathDesign === 'object') {
+      display.pathDesign.active = !!s.pathDesign.active;
+      display.pathDesign.committed = !!s.pathDesign.committed;
+      // While designing, the renderer's local `drawn` array is the source of
+      // truth (it records the exact click/drag sequence). Computer A's snapshot
+      // may lag by a frame, so only adopt it once the design is committed.
+      if (!display.pathDesign.active) {
+        if (Array.isArray(s.pathDesign.drawn)) {
+          display.pathDesign.drawn = s.pathDesign.drawn.map(function (c) {
+            return { row: c.row, col: c.col };
+          });
+        }
+      }
+    }
 
     // Detect firing: a tower's cooldownFrac jumping from low to high means it shot.
     if (s.towers) {
@@ -612,20 +813,82 @@
   }
 
   // ---------- Mouse tracking (for hover range indicator) ----------
+  let designDragging = false;
   canvas.addEventListener('mousemove', function (evt) {
     const p = canvasPoint(evt);
-    display.hoverTile = tileAt(p.x, p.y) || null;
+    const tile = tileAt(p.x, p.y) || null;
+    display.hoverTile = tile;
+    // Drag-to-draw: while the mouse is down in path-design mode, keep chaining
+    // adjacent cells into the drawn path.
+    if (designDragging && display.pathDesign.active && tile) {
+      if (designAddCell(tile)) {
+        dispatchPathDraw();
+      }
+    }
+  });
+
+  canvas.addEventListener('mousedown', function (evt) {
+    if (display.pathDesign.active) designDragging = true;
+  });
+
+  window.addEventListener('mouseup', function () {
+    designDragging = false;
   });
 
   canvas.addEventListener('mouseleave', function () {
     display.hoverTile = null;
   });
 
-  // ---------- Click -> grid coords -> dispatch build / upgrade request ----------
+  // ---------- Path design helpers ----------
+  // Add a tile to the drawn path (only cardinally adjacent to the last tile,
+  // and never a blocked/scenery tile). Returns true if the tile was added.
+  function designAddCell(tile) {
+    const drawn = display.pathDesign.drawn;
+    if (drawn.length === 0) {
+      // The path must start on the top edge (row 0).
+      if (tile.row !== 0) return false;
+    } else {
+      const last = drawn[drawn.length - 1];
+      const dr = Math.abs(tile.row - last.row);
+      const dc = Math.abs(tile.col - last.col);
+      // Only a single cardinal step between consecutive tiles.
+      if (dr + dc !== 1) return false;
+      // No repeats (would create a loop).
+      const dup = drawn.some(function (c) {
+        return c.row === tile.row && c.col === tile.col;
+      });
+      if (dup) return false;
+    }
+    // Can't draw over scenery (blocked) tiles.
+    if (display.grid && display.grid[gridIndex(tile.row, tile.col)] === 2) return false;
+    drawn.push({ row: tile.row, col: tile.col });
+    return true;
+  }
+
+  // Push the current drawn cells to Computer A (it validates & stores them).
+  function dispatchPathDraw() {
+    window.dispatchEvent(
+      new CustomEvent(GAME_EVENTS.PATH_DRAW, {
+        detail: { cells: display.pathDesign.drawn.map(function (c) {
+          return { row: c.row, col: c.col };
+        }) }
+      })
+    );
+  }
+
+  // ---------- Click -> grid coords -> dispatch build / upgrade / path request ----------
   canvas.addEventListener('click', function (evt) {
     const p = canvasPoint(evt);
     const tile = tileAt(p.x, p.y);
     if (!tile) return;
+
+    // Path design mode: clicks draw the creep lane instead of building.
+    if (display.pathDesign.active) {
+      if (designAddCell(tile)) {
+        dispatchPathDraw();
+      }
+      return;
+    }
 
     const tower = display.towers.find(function (t) {
       return t.row === tile.row && t.col === tile.col;
@@ -679,6 +942,24 @@
       const p = canvasPoint(t);
       display.hoverTile = tileAt(p.x, p.y) || null;
       touchActive = true;
+    }
+  }, { passive: true });
+
+  // touchmove keeps the hover tile (range ring + tower panel) live while the
+  // finger drags across tiles — matches the desktop mousemove behavior so
+  // mobile players can preview a tower's range ring before placing it.
+  canvas.addEventListener('touchmove', function (evt) {
+    if (!touchActive) return;
+    if (evt.touches && evt.touches.length > 0) {
+      const t = evt.touches[0];
+      const p = canvasPoint(t);
+      display.hoverTile = tileAt(p.x, p.y) || null;
+      // Drag-to-draw: while touching in path-design mode, chain adjacent cells.
+      if (display.pathDesign.active && display.hoverTile) {
+        if (designAddCell(display.hoverTile)) {
+          dispatchPathDraw();
+        }
+      }
     }
   }, { passive: true });
 
@@ -762,6 +1043,44 @@
     );
   });
 
+  // ---------- Path design buttons (Done / Reset) ----------
+  const pathDoneBtn = document.getElementById('path-done');
+  const pathResetBtn = document.getElementById('path-reset');
+  if (pathDoneBtn) {
+    pathDoneBtn.addEventListener('click', function () {
+      if (!display.pathDesign.active) return;
+      window.dispatchEvent(new CustomEvent(GAME_EVENTS.COMMIT_PATH, { detail: {} }));
+    });
+  }
+  if (pathResetBtn) {
+    pathResetBtn.addEventListener('click', function () {
+      if (!display.pathDesign.active) return;
+      // Clear the renderer-local drawing so the design starts fresh.
+      display.pathDesign.drawn.length = 0;
+      window.dispatchEvent(new CustomEvent(GAME_EVENTS.RESET_PATH, { detail: {} }));
+    });
+  }
+
+  // Path status feedback (valid/invalid) — brief toast.
+  function onPathStatus(evt) {
+    const d = evt.detail || {};
+    if (!toastEl) toastEl = document.getElementById('toast');
+    if (!toastEl) return;
+    if (d.ok) {
+      toastEl.textContent = 'Path locked in!';
+      toastEl.style.borderColor = '#38bdf8';
+      toastEl.style.color = '#38bdf8';
+    } else {
+      const reason = d.reason === 'reset' ? 'Path reset to default.'
+        : 'Invalid path — needs to run from the top edge to the bottom edge.';
+      toastEl.textContent = reason;
+      toastEl.style.borderColor = '#f87171';
+      toastEl.style.color = '#f87171';
+    }
+    toastEl.classList.add('show');
+    toastTimer = TOAST_TTL;
+  }
+
   // ---------- Start Wave button ----------
   const startBtn = document.getElementById('start-wave');
   if (startBtn) {
@@ -795,8 +1114,8 @@
   }
 
   // ---------- Tower type selector (renderer UI concern) ----------
-  // The order of TOWER_ORDER must match the hotkeys 1..5.
-  const TOWER_ORDER = ['basic', 'sniper', 'cannon', 'splash', 'frost'];
+  // The order of TOWER_ORDER must match the hotkeys 1..9.
+  const TOWER_ORDER = ['basic', 'sniper', 'cannon', 'splash', 'frost', 'bounty', 'buff', 'magnet', 'redirect'];
 
   function selectType(type) {
     selectedType = type;
@@ -811,9 +1130,9 @@
     });
   });
 
-  // Hotkeys 1..5 select the tower type in TOWER_ORDER (mirrors the HUD buttons).
+  // Hotkeys 1..9 select the tower type in TOWER_ORDER (mirrors the HUD buttons).
   window.addEventListener('keydown', function (evt) {
-    const idx = ['1', '2', '3', '4', '5'].indexOf(evt.key);
+    const idx = ['1', '2', '3', '4', '5', '6', '7', '8', '9'].indexOf(evt.key);
     if (idx < 0 || idx >= TOWER_ORDER.length) return;
     if (evt.target && /INPUT|TEXTAREA/.test(evt.target.tagName)) return;
     selectType(TOWER_ORDER[idx]);
@@ -887,6 +1206,19 @@
       });
       bossChoiceOptionsEl.appendChild(btn);
     });
+
+    // Cancel / skip: send the wave with no modifier so the game can't soft-lock.
+    const skipBtn = document.createElement('button');
+    skipBtn.className = 'bc-option';
+    skipBtn.textContent = 'Just send it — no modifier';
+    skipBtn.addEventListener('click', function () {
+      bossChoiceEl.classList.add('hidden');
+      window.dispatchEvent(
+        new CustomEvent(GAME_EVENTS.BOSS_MODIFIER, { detail: { choice: 'skip' } })
+      );
+    });
+    bossChoiceOptionsEl.appendChild(skipBtn);
+
     bossChoiceEl.classList.remove('hidden');
   }
 
@@ -900,6 +1232,8 @@
       gameOverShown = true;
       const waveLabel = document.getElementById('game-over-wave');
       if (waveLabel) waveLabel.textContent = String(d.wave != null ? d.wave : 0);
+      const killsLabel = document.getElementById('game-over-kills');
+      if (killsLabel) killsLabel.textContent = String(d.kills != null ? d.kills : 0);
       gameOverEl.classList.remove('hidden');
     }
   }
@@ -914,17 +1248,44 @@
     display.towers = [];
     display.enemies = [];
     display.hoverTile = null;
+    display.pathDesign.active = false;
+    display.pathDesign.drawn = [];
+    display.pathDesign.committed = false;
+  }
+
+  // ---------- Victory overlay ----------
+  const victoryEl = document.getElementById('victory');
+  function onVictory(evt) {
+    const d = evt.detail || {};
+    if (victoryEl) {
+      const killsLabel = document.getElementById('victory-kills');
+      if (killsLabel) killsLabel.textContent = String(d.kills != null ? d.kills : 0);
+      victoryEl.classList.remove('hidden');
+    }
   }
 
   function onRestart() {
     resetDisplayState();
     if (gameOverEl) gameOverEl.classList.add('hidden');
+    if (victoryEl) victoryEl.classList.add('hidden');
     gameOverShown = false;
+
+    // Reset pause/speed button labels so they stay in sync with game state.
+    pausedLabel = false;
+    if (pauseBtn) pauseBtn.textContent = '⏸ Pause';
+    speedIndex = 0;
+    if (speedBtn) speedBtn.textContent = '1×';
   }
 
   const playAgainBtn = document.getElementById('play-again');
+  const victoryAgainBtn = document.getElementById('victory-again');
   if (playAgainBtn) {
     playAgainBtn.addEventListener('click', function () {
+      window.dispatchEvent(new CustomEvent(GAME_EVENTS.RESTART, { detail: {} }));
+    });
+  }
+  if (victoryAgainBtn) {
+    victoryAgainBtn.addEventListener('click', function () {
       window.dispatchEvent(new CustomEvent(GAME_EVENTS.RESTART, { detail: {} }));
     });
   }
@@ -936,7 +1297,9 @@
   window.addEventListener(GAME_EVENTS.BOSS_SPAWNED, onBossSpawned);
   window.addEventListener(GAME_EVENTS.BOSS_MODIFIER_REQUEST, onBossModifierRequest);
   window.addEventListener(GAME_EVENTS.WAVE_CLEARED, onWaveCleared);
+  window.addEventListener(GAME_EVENTS.VICTORY, onVictory);
   window.addEventListener(GAME_EVENTS.RESTART, onRestart);
+  window.addEventListener(GAME_EVENTS.PATH_STATUS, onPathStatus);
 
   // ---------- Onboarding overlay dismiss ----------
   // The how-to overlay is shown on first load. Dismissing it hides the

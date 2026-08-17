@@ -4,7 +4,40 @@ const CONFIG = {
   GRID_COLS: 10,
   TILE_SIZE: 64, // Canvas width = 640px, height = 640px
   STARTING_CASH: 200,
-  STARTING_LIVES: 20
+  STARTING_LIVES: 20,
+
+  // ---------- Balance tunables (single source of truth) ----------
+  // Every gameplay constant lives here so Computer A (game_logic.js) and any
+  // future consumers reference the same numbers. Previously these were scattered
+  // as magic numbers in game_logic.js and the design notes, which let them drift
+  // (e.g. the boss HP being ×15 here vs ×20 in notes). Keep tuning here only.
+  BALANCE: {
+    // Enemy / wave pacing
+    ENEMY_HP: 75,          // base normal-creep HP
+    ENEMY_SPEED: 60,       // pixels per second
+    ENEMY_RADIUS: 12,
+    BOSS_HP_MULT: 15,      // boss HP as a multiple of base enemy HP (×15)
+    HP_PER_WAVE: 0.15,     // +15% enemy HP per wave
+    COUNT_PER_WAVE: 2,     // +2 enemies per wave
+    WAVE_ENEMY_COUNT: 6,   // base enemies per wave
+    SPAWN_INTERVAL: 0.9,   // seconds between spawns
+    KILL_REWARD: 8,        // base cash earned per kill
+    MAX_DT: 0.05,          // clamp dt to avoid huge jumps on tab switch
+
+    // Economy
+    INTEREST_RATE: 0.05,   // +5% of unspent cash per wave cleared
+    INTEREST_CAP: 25,      // cap so hoarding can't snowball infinitely
+    SELL_REFUND: 0.7,      // refund 70% of total invested on sell
+
+    // Upgrades (shared with the HUD via the snapshot — never drift)
+    MAX_LEVEL: 3,
+    UPGRADE_COST_MULT: 0.6,    // upgrade cost = base cost × 0.6^level
+    UPGRADE_DAMAGE_MULT: 1.25, // +25% damage per level
+    UPGRADE_RANGE_MULT: 1.1,   // +10% range per level
+
+    // Win condition
+    VICTORY_WAVE: 20       // clearing this wave wins the game
+  }
 };
 
 // One-phrase role for each tower, used in onboarding tooltips and the HUD.
@@ -13,7 +46,11 @@ const TOWER_ROLES = {
   sniper: 'Long range. Picks off one target at a time, high damage.',
   cannon: 'Big hits. Slow, heavy single-target damage.',
   splash: 'Area damage. Hits every creep near its target.',
-  frost: 'Slows enemies. Low damage, keeps the lane safe.'
+  frost: 'Slows enemies. Low damage, keeps the lane safe.',
+  bounty: 'Pays bonus cash for every creep killed inside its range.',
+  buff: 'Aura that boosts the damage of nearby towers.',
+  magnet: 'Gently pulls creeps inside its radius toward it, dragging them off the lane.',
+  redirect: 'Teleports creeps that enter its zone a few steps back along the path, so they must re-walk that stretch.'
 };
 
 // Standardized Event Names both A and B must use
@@ -33,5 +70,10 @@ const GAME_EVENTS = {
   BOSS_MODIFIER_REQUEST: 'td:boss_modifier_request', // Sent by A -> B shows boss-choice modal
   BOSS_MODIFIER: 'td:boss_modifier',       // Sent by B -> A applies the chosen boss modifier
   WAVE_CLEARED: 'td:wave_cleared',         // Sent by A -> B shows the income toast
-  GAME_OVER: 'td:game_over'                // Sent by A -> Used by B to show the game-over overlay
+  VICTORY: 'td:victory',                 // Sent by A -> B shows the victory overlay
+  GAME_OVER: 'td:game_over',             // Sent by A -> Used by B to show the game-over overlay
+  PATH_DRAW: 'td:path_draw',             // Sent by B -> A stores the drawn path cells during design
+  COMMIT_PATH: 'td:commit_path',         // Sent by B -> A validates & commits the drawn path
+  RESET_PATH: 'td:reset_path',           // Sent by B -> A resets the path back to the default
+  PATH_STATUS: 'td:path_status'          // Sent by A -> B reports path validation result
 };
