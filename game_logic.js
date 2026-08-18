@@ -189,6 +189,7 @@
   }
 
   // ---------- State ----------
+  let enemySeq = 0; // stable per-creep id (renderer uses it to detect deaths)
   const state = {
     cash: CONFIG.STARTING_CASH,
     lives: CONFIG.STARTING_LIVES,
@@ -329,6 +330,7 @@
     const rewardMult = opts && opts.rewardMult != null ? opts.rewardMult : 1;
     const hp = def.hp * mult * hpMult;
     state.enemies.push({
+      id: ++enemySeq,           // stable id (renderer detects disappearances)
       type: type,
       x: start.x,
       y: start.y,
@@ -561,6 +563,9 @@
       if (!best) continue;
 
       t.cooldown = 1 / def.fireRate;
+      // Remember the primary target's position so the renderer can draw a
+      // visible projectile from this tower to the creep it shot.
+      t.lastTarget = { x: best.x, y: best.y };
 
       if (def.splash) {
         // AOE tower: damage every creep within the splash radius of the target.
@@ -578,7 +583,7 @@
           const applied = damageToEnemy(e, amount, true);
           e.hp -= applied;
           noteDamageTaken(e);
-          emit(GAME_EVENTS.ENEMY_DAMAGED, { x: e.x, y: e.y, amount: applied });
+          emit(GAME_EVENTS.ENEMY_DAMAGED, { x: e.x, y: e.y, amount: applied, type: t.type });
 
           if (e.hp <= 0) {
             state.enemies.splice(i, 1);
@@ -594,7 +599,7 @@
         const applied = damageToEnemy(best, dmg, false);
         best.hp -= applied;
         noteDamageTaken(best);
-        emit(GAME_EVENTS.ENEMY_DAMAGED, { x: best.x, y: best.y, amount: applied });
+        emit(GAME_EVENTS.ENEMY_DAMAGED, { x: best.x, y: best.y, amount: applied, type: t.type });
 
         // Frost towers also apply a slow effect to the target.
         if (def.slow) {
@@ -717,11 +722,15 @@
           level: t.level,
           upgradeCost: upgradeCost(def, t.level),
           targetMode: t.targetMode,
-          cooldownFrac: Math.max(0, Math.min(1, t.cooldown * def.fireRate))
+          cooldownFrac: Math.max(0, Math.min(1, t.cooldown * def.fireRate)),
+          // Position of the creep this tower last fired at (projectile target).
+          targetX: t.lastTarget ? t.lastTarget.x : null,
+          targetY: t.lastTarget ? t.lastTarget.y : null
         };
       }),
       enemies: state.enemies.map(function (e) {
         return {
+          id: e.id,
           type: e.type,
           x: e.x,
           y: e.y,
@@ -824,7 +833,8 @@
       range: def.range,
       level: 1,
       targetMode: 'nearest', // 'nearest' | 'first' | 'strong'
-      cooldown: 0
+      cooldown: 0,
+      lastTarget: null // {x,y} of the creep last fired at (for renderer projectiles)
     });
     dirty = true;
   }

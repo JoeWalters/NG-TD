@@ -107,6 +107,20 @@
       text-align: right;
     }
 
+    /* Income/loss feedback: the cash & lives readouts pop when they change. */
+    .stat .value.flash-up { animation: flash-up 0.35s ease; }
+    .stat .value.flash-down { animation: flash-down 0.35s ease; }
+    @keyframes flash-up {
+      0% { color: #22c55e; transform: scale(1); }
+      30% { color: #4ade80; transform: scale(1.18); }
+      100% { color: var(--accent); transform: scale(1); }
+    }
+    @keyframes flash-down {
+      0% { color: #f87171; transform: scale(1); }
+      30% { color: #f87171; transform: scale(1.18); }
+      100% { color: var(--accent); transform: scale(1); }
+    }
+
     /* Next-wave preview: a compact summary of the upcoming wave's mix. */
     .stat .value.next-wave {
       font-size: 13px;
@@ -126,6 +140,21 @@
       white-space: nowrap;
       display: block;
       line-height: 1.2;
+    }
+
+    /* Upcoming-wave preview: one colored dot per creep type so the mix reads
+       at a glance even before reading the text summary. */
+    .next-wave-dots {
+      display: flex;
+      gap: 3px;
+      margin-top: 3px;
+      line-height: 1;
+    }
+    .next-wave-dots .nw-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      box-shadow: inset 0 0 0 1px rgba(255,255,255,0.25);
     }
 
     .hud-sep {
@@ -627,6 +656,7 @@
       <span class="label">Next</span>
       <span class="value next-wave" id="next-wave">—</span>
       <span class="value next-wave-name" id="next-wave-name">—</span>
+      <span class="next-wave-dots" id="next-wave-dots"></span>
     </div>
   </header>
 

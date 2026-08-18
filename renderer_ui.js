@@ -76,8 +76,22 @@
   const DAMAGE_TTL = 40; // frames
   const FLASH_TTL = 8; // frames
 
-  function spawnDamage(x, y, text) {
-    display.damageNumbers.push({ x, y, text, ttl: DAMAGE_TTL });
+  // Damage numbers are tinted by the tower type that dealt the hit so the
+  // damage source reads at a glance (frost = cyan, splash = green, etc.).
+  const DMG_COLORS = {
+    basic: '#fca5a5',
+    sniper: '#d8b4fe',
+    cannon: '#f87171',
+    splash: '#86efac',
+    frost: '#67e8f9',
+    bounty: '#fdba74',
+    buff: '#fde68a',
+    magnet: '#f0abfc',
+    redirect: '#6ee7b7'
+  };
+
+  function spawnDamage(x, y, text, color) {
+    display.damageNumbers.push({ x, y, text, color: color || '#fca5a5', ttl: DAMAGE_TTL });
   }
 
   function spawnFlash(x, y) {
@@ -283,21 +297,33 @@
       const cx = x + TILE_PX * 0.5;
       const cy = y + TILE_PY * 0.5;
       ctx.fillStyle = 'rgba(0,0,0,0.25)';
+      // Aim the barrel toward the last-fired target so towers visibly track
+      // the creeps they're shooting (falls back to a neutral angle with none).
+      let aim = null;
+      if (typeof t.targetX === 'number' && typeof t.targetY === 'number') {
+        aim = Math.atan2(t.targetY - cy, t.targetX - cx);
+      }
       if (t.type === 'sniper') {
-        // Long barrel pointing up-right
+        // Long barrel that tracks the target (default: up-right).
+        const a = aim == null ? -0.5 : aim;
         ctx.save();
         ctx.translate(cx, cy);
-        ctx.rotate(-0.5);
+        ctx.rotate(a);
         ctx.fillRect(2, -3, TILE_PX * 0.62, 6);
         ctx.restore();
         ctx.fillStyle = color;
         ctx.beginPath();
-        ctx.arc(cx + 10, cy - 8, 5, 0, Math.PI * 2);
+        ctx.arc(cx, cy, 5, 0, Math.PI * 2);
         ctx.fill();
       } else if (t.type === 'cannon') {
-        // Twin barrels
-        ctx.fillRect(6, cy - 8, TILE_PX * 0.55, 5);
-        ctx.fillRect(6, cy + 3, TILE_PX * 0.55, 5);
+        // Twin barrels that track the target (default: pointing right).
+        const a = aim == null ? 0 : aim;
+        ctx.save();
+        ctx.translate(cx, cy);
+        ctx.rotate(a);
+        ctx.fillRect(6, -8, TILE_PX * 0.55, 5);
+        ctx.fillRect(6, 3, TILE_PX * 0.55, 5);
+        ctx.restore();
         ctx.fillStyle = color;
         ctx.beginPath();
         ctx.arc(cx, cy, 10, 0, Math.PI * 2);
@@ -376,9 +402,14 @@
         ctx.closePath();
         ctx.fill();
       } else {
-        // Basic: single forward barrel
+        // Basic: single barrel that tracks the target (default: pointing right)
+        const a = aim == null ? 0 : aim;
+        ctx.save();
+        ctx.translate(cx, cy);
+        ctx.rotate(a);
         ctx.fillStyle = 'rgba(0,0,0,0.25)';
-        ctx.fillRect(cx - 3, cy - 2, TILE_PX * 0.44, 5);
+        ctx.fillRect(-3, -2, TILE_PX * 0.44, 5);
+        ctx.restore();
         ctx.fillStyle = color;
         ctx.beginPath();
         ctx.arc(cx, cy, 9, 0, Math.PI * 2);
@@ -483,7 +514,84 @@
     }
   }
 
+  // ---------- Projectiles (visible tower shots) ----------
+  // A projectile is a glowing bolt that travels from the firing tower's center
+  // to the creep it shot at. Spawned when the renderer detects a fresh shot
+  // (cooldownFrac spike) using the target position Computer A exposed.
+  const projectiles = []; // {sx, sy, tx, ty, ttl}
+  const PROJ_TTL = 6;
+
+  // ---------- Screen shake ----------
+  // A brief decaying camera offset for juicy feedback: boss spawns and creeps
+  // leaking past the exit give a small jolt so the moment lands.
+  let shake = 0;
+  const SHAKE_DECAY = 0.82;
+
+  function addShake(amount) {
+    shake = Math.max(shake, amount);
+  }
+
+  // ---------- Death burst particles ----------
+  // When the renderer notices an enemy vanish between frames (stable id gone),
+  // it pops a short-lived burst of colored particles at that creep's spot.
+  const particles = []; // {x, y, vx, vy, color, ttl}
+  const PARTICLE_TTL = 24;
+
+  function spawnDeathBurst(x, y, color) {
+    for (let i = 0; i < 7; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const speed = 20 + Math.random() * 45;
+      particles.push({
+        x: x, y: y,
+        vx: Math.cos(a) * speed,
+        vy: Math.sin(a) * speed,
+        color: color,
+        ttl: PARTICLE_TTL
+      });
+    }
+  }
+
+  function drawParticles() {
+    for (const p of particles) {
+      const frac = p.ttl / PARTICLE_TTL; // 1 -> 0 (fade out)
+      ctx.globalAlpha = Math.min(1, frac * 1.4);
+      ctx.fillStyle = p.color;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, Math.max(1, 3 * frac + 1), 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+    }
+  }
+
+  function drawProjectiles() {
+    for (const p of projectiles) {
+      const frac = 1 - p.ttl / PROJ_TTL;          // 0 -> 1 (progress to target)
+      const x = p.sx + (p.tx - p.sx) * frac;
+      const y = p.sy + (p.ty - p.sy) * frac;
+
+      // Leading glow dot.
+      ctx.globalAlpha = Math.min(1, frac * 1.5);
+      ctx.fillStyle = '#fde68a';
+      ctx.beginPath();
+      ctx.arc(x, y, 4, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+
+      // Trailing tracer line from the tower to the bolt.
+      ctx.strokeStyle = 'rgba(253,230,138,0.35)';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(p.sx, p.sy);
+      ctx.lineTo(x, y);
+      ctx.stroke();
+    }
+  }
+
   // ---------- Enemy rendering ----------
+  // Eased health bars: each enemy id carries its *displayed* hp fraction and
+  // eases toward the true value so damage reads as a smooth drain, not a step.
+  const hpEase = {}; // id -> { shown }
+
   function drawEnemies() {
     for (const e of display.enemies) {
       const x = e.x;
@@ -496,18 +604,8 @@
       if (e.slow) fill = '#7dd3fc';
       else if (e.shield) fill = '#94a3b8';
       else if (e.regen) fill = '#4ade80';
-      ctx.fillStyle = fill;
-      ctx.beginPath();
-      ctx.arc(x, y, r, 0, Math.PI * 2);
-      ctx.fill();
 
-      // A darker rim gives creeps a bit of depth.
-      ctx.strokeStyle = 'rgba(0,0,0,0.35)';
-      ctx.lineWidth = 2;
-      ctx.stroke();
-
-      // Facing indicator: a small "eye" dot that shows the creep's heading
-      // (uses the velocity if the snapshot provides one).
+      // Facing indicator: heading unit vector (velocity if the snapshot has it).
       let vx = 0;
       let vy = -1;
       if (typeof e.vx === 'number' && typeof e.vy === 'number' &&
@@ -516,12 +614,93 @@
         vx = e.vx / len;
         vy = e.vy / len;
       }
+      const heading = Math.atan2(vy, vx);
+
+      // Distinct silhouettes per creep type so the field reads at a glance:
+      // normal/others = circle, scout = triangle (fast), tank = hexagon,
+      // boss = crowned circle with a soft glow.
+      ctx.fillStyle = fill;
+      ctx.strokeStyle = 'rgba(0,0,0,0.35)';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      if (e.type === 'scout') {
+        // Triangle pointing along the heading (apex ahead).
+        const a = heading;
+        ctx.moveTo(x + Math.cos(a) * r * 1.35, y + Math.sin(a) * r * 1.35);
+        ctx.lineTo(x + Math.cos(a + 2.4) * r, y + Math.sin(a + 2.4) * r);
+        ctx.lineTo(x + Math.cos(a - 2.4) * r, y + Math.sin(a - 2.4) * r);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+      } else if (e.type === 'tank') {
+        // Flat-top hexagon (armored).
+        for (let i = 0; i < 6; i++) {
+          const a = Math.PI / 6 + i * Math.PI / 3;
+          const px = x + Math.cos(a) * r;
+          const py = y + Math.sin(a) * r;
+          if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+        }
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+      } else if (e.type === 'boss') {
+        // Circle body + a soft glow and a crown of three spikes.
+        ctx.beginPath();
+        ctx.arc(x, y, r, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+        // Crown spikes on top.
+        ctx.fillStyle = fill;
+        ctx.beginPath();
+        ctx.moveTo(x - 9, y - r);
+        ctx.lineTo(x - 5, y - r - 7);
+        ctx.lineTo(x - 1, y - r);
+        ctx.lineTo(x + 1, y - r - 8);
+        ctx.lineTo(x + 5, y - r - 1);
+        ctx.lineTo(x + 9, y - r);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+      } else {
+        ctx.arc(x, y, r, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+      }
+
+      // Boss glow aura so the big threat reads even from the map edge.
+      if (e.type === 'boss') {
+        ctx.globalAlpha = 0.25;
+        ctx.fillStyle = '#f59e0b';
+        ctx.beginPath();
+        ctx.arc(x, y, r * 1.6, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.globalAlpha = 1;
+      }
+
+      // Eye dot showing the creep's heading (all shapes).
       const eyeX = x + vx * r * 0.45;
       const eyeY = y + vy * r * 0.45;
       ctx.fillStyle = 'rgba(0,0,0,0.55)';
       ctx.beginPath();
       ctx.arc(eyeX, eyeY, Math.max(2, r * 0.18), 0, Math.PI * 2);
       ctx.fill();
+
+      // Status trails: fading motes that lag behind the creep's motion so a
+      // slow / regen reads even while the body is moving.
+      if (e.slow || e.regen) {
+        const trailColor = e.slow ? '#22d3ee' : '#22c55e';
+        const backX = -vx;
+        const backY = -vy;
+        for (let t = 1; t <= 3; t++) {
+          const d = t * r * 0.5;
+          ctx.globalAlpha = 0.35 * (1 - t / 4);
+          ctx.fillStyle = trailColor;
+          ctx.beginPath();
+          ctx.arc(x + backX * d, y + backY * d, Math.max(1.5, r * 0.22), 0, Math.PI * 2);
+          ctx.fill();
+        }
+        ctx.globalAlpha = 1;
+      }
 
       if (e.slow) {
         // A small icy ring around slowed creeps.
@@ -558,6 +737,17 @@
       }
 
       if (frac !== null) {
+        // Ease the *displayed* fraction toward the true one (per enemy id).
+        let shown = frac;
+        if (e.id != null) {
+          const st = hpEase[e.id];
+          if (!st) {
+            hpEase[e.id] = { shown: frac };
+          } else {
+            st.shown += (frac - st.shown) * 0.25;
+            shown = st.shown;
+          }
+        }
         const barW = r * 2;
         const barH = 4;
         const bx = x - barW / 2;
@@ -566,13 +756,22 @@
         ctx.fillStyle = 'rgba(15,23,42,0.8)';
         ctx.fillRect(bx - 1, by - 1, barW + 2, barH + 2);
         ctx.fillStyle = '#4ade80';
-        ctx.fillRect(bx, by, barW * frac, barH);
+        ctx.fillRect(bx, by, barW * shown, barH);
         // Bosses get a gold health bar so they stand out.
         if (e.type === 'boss') {
           ctx.fillStyle = '#f59e0b';
-          ctx.fillRect(bx, by, barW * frac, barH);
+          ctx.fillRect(bx, by, barW * shown, barH);
         }
       }
+    }
+
+    // Drop easing state for creeps that are gone (died/leaked) so it can't grow.
+    // Note: for...in yields string keys, so store ids as strings in the Set
+    // or Set.has() would never match the number ids (1 !== '1').
+    const liveIds = new Set();
+    for (const e of display.enemies) if (e.id != null) liveIds.add(String(e.id));
+    for (const id in hpEase) {
+      if (!liveIds.has(id)) delete hpEase[id];
     }
   }
 
@@ -590,6 +789,48 @@
     }
   }
 
+  // ---------- Ambient background + vignette ----------
+  // A sparse field of slowly-twinkling dust motes drifting over the grid adds
+  // depth, and a radial vignette darkens the canvas edges for focus.
+  let bgTime = 0;
+  const BG_DOTS = (function () {
+    // Deterministic pseudo-random dots (no per-frame Math.random flicker).
+    const dots = [];
+    let s = 1234567;
+    function rnd() { s = (s * 16807) % 2147483647; return s / 2147483647; }
+    for (let i = 0; i < 42; i++) {
+      dots.push({
+        x: rnd() * 640, y: rnd() * 640,
+        r: 1 + rnd() * 1.6, phase: rnd() * Math.PI * 2
+      });
+    }
+    return dots;
+  })();
+
+  function drawBackground() {
+    bgTime += 1;
+    for (const d of BG_DOTS) {
+      const tw = 0.5 + 0.5 * Math.sin(bgTime * 0.05 + d.phase);
+      ctx.globalAlpha = tw * 0.35;
+      ctx.fillStyle = '#38bdf8';
+      ctx.beginPath();
+      ctx.arc(d.x, d.y, d.r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  function drawVignette() {
+    const w = canvas.width, h = canvas.height;
+    const cx = w / 2, cy = h / 2;
+    const maxR = Math.hypot(w, h) / 2;
+    const g = ctx.createRadialGradient(cx, cy, maxR * 0.55, cx, cy, maxR);
+    g.addColorStop(0, 'rgba(2,6,23,0)');
+    g.addColorStop(1, 'rgba(2,6,23,0.45)');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, w, h);
+  }
+
   // ---------- Damage numbers ----------
   function drawDamageNumbers() {
     ctx.font = 'bold 14px sans-serif';
@@ -599,10 +840,21 @@
     for (const d of display.damageNumbers) {
       const alpha = Math.min(1, d.ttl / 12);
       ctx.globalAlpha = alpha;
-      ctx.fillStyle = '#fca5a5';
+      ctx.fillStyle = d.color || '#fca5a5';
       ctx.fillText(d.text, d.x, d.y);
       ctx.globalAlpha = 1;
     }
+  }
+
+  // Flash a HUD value with a CSS pop animation (up = green, down = red).
+  function flashHud(el, cls) {
+    if (!el) return;
+    el.classList.remove('flash-up', 'flash-down');
+    void el.offsetWidth; // restart the animation even if re-triggered quickly
+    el.classList.add(cls);
+    setTimeout(function () {
+      el.classList.remove('flash-up', 'flash-down');
+    }, 350);
   }
 
   // ---------- HUD update ----------
@@ -619,11 +871,36 @@
     return parts.join(' · ');
   }
 
+  // Per-type colors for the upcoming-wave dot preview (mirrors enemy tints).
+  const WAVE_DOT_COLORS = {
+    normal: '#fbbf24', scout: '#38bdf8', tank: '#f59e0b',
+    boss: '#dc2626', shielded: '#94a3b8', regener: '#4ade80'
+  };
+
+  // Render one small colored dot per upcoming creep (capped so big waves
+  // don't overflow the HUD). Pure DOM, driven by the nextWave snapshot.
+  function drawWaveDots() {
+    const dotsEl = document.getElementById('next-wave-dots');
+    if (!dotsEl) return;
+    const wave = Array.isArray(display.nextWave) ? display.nextWave : [];
+    // Cap at 24 dots; beyond that just show a '+' overflow marker.
+    const shown = wave.slice(0, 24);
+    const overflow = wave.length > 24;
+    let html = '';
+    for (const t of shown) {
+      const c = WAVE_DOT_COLORS[t] || '#94a3b8';
+      html += '<span class="nw-dot" style="background:' + c + '"></span>';
+    }
+    if (overflow) html += '<span class="nw-dot" style="background:rgba(255,255,255,0.6)"></span>';
+    dotsEl.innerHTML = html;
+  }
+
   function updateHUD() {
     if (cashEl) cashEl.textContent = String(display.cash);
     if (livesEl) livesEl.textContent = String(display.lives);
     if (waveEl) waveEl.textContent = String(display.wave);
     if (nextWaveEl) nextWaveEl.textContent = nextWaveSummary(display.nextWave);
+    drawWaveDots();
     // Telegraph the upcoming wave's flavor name alongside the composition.
     const nameEl = document.getElementById('next-wave-name');
     if (nameEl) nameEl.textContent = display.waveName;
@@ -705,12 +982,25 @@
   // ---------- Main render loop ----------
   function render() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
+    // Camera shake: offset all game drawing by a decaying random jitter.
+    let shaken = false;
+    if (shake > 0.1) {
+      shaken = true;
+      ctx.save();
+      ctx.translate((Math.random() * 2 - 1) * shake, (Math.random() * 2 - 1) * shake);
+      shake *= SHAKE_DECAY;
+    }
     drawGrid();
+    drawBackground();
     drawTowers();
+    drawProjectiles();
     drawMuzzleFlashes();
     drawEnemies();
+    drawParticles();
     drawFlashes();
     drawDamageNumbers();
+    if (shaken) ctx.restore();
+    drawVignette();
     drawPathDesignHud();
     updateHUD();
     updateTowerHud();
@@ -740,6 +1030,24 @@
       }
     }
 
+    // tick projectile lifetimes (renderer-local)
+    for (let i = projectiles.length - 1; i >= 0; i--) {
+      projectiles[i].ttl -= 1;
+      if (projectiles[i].ttl <= 0) {
+        projectiles.splice(i, 1);
+      }
+    }
+
+    // tick particle lifetimes + move (renderer-local)
+    for (let i = particles.length - 1; i >= 0; i--) {
+      particles[i].ttl -= 1;
+      particles[i].x += particles[i].vx * 0.05;
+      particles[i].y += particles[i].vy * 0.05;
+      if (particles[i].ttl <= 0) {
+        particles.splice(i, 1);
+      }
+    }
+
     tickBossBanner();
     tickToast();
 
@@ -755,8 +1063,19 @@
     if (!s) return;
 
     // Copy only render-relevant fields into the display object.
-    if (typeof s.cash === 'number') display.cash = s.cash;
-    if (typeof s.lives === 'number') display.lives = s.lives;
+    if (typeof s.cash === 'number') {
+      const prev = display.cash;
+      display.cash = s.cash;
+      // Income/loss feedback: flash the cash readout so gains land.
+      if (s.cash > prev) flashHud(cashEl, 'flash-up');
+      else if (s.cash < prev) flashHud(cashEl, 'flash-down');
+    }
+    if (typeof s.lives === 'number') {
+      const prev = display.lives;
+      display.lives = s.lives;
+      // Losing a life is a big negative moment — flash lives red.
+      if (s.lives < prev) flashHud(livesEl, 'flash-down');
+    }
     if (typeof s.wave === 'number') display.wave = s.wave;
     if (typeof s.waveName === 'string') display.waveName = s.waveName;
     if (Array.isArray(s.nextWave)) display.nextWave = s.nextWave;
@@ -789,17 +1108,50 @@
         const prev = lastCooldownFrac[key] || 0;
         const cur = typeof t.cooldownFrac === 'number' ? t.cooldownFrac : 0;
         if (cur > 0.8 && prev <= 0.8) {
-          muzzleFlashes.push({
-            x: (t.col + 0.5) * TILE_PX,
-            y: (t.row + 0.5) * TILE_PY,
-            ttl: MUZZLE_TTL
-          });
+          const sx = (t.col + 0.5) * TILE_PX;
+          const sy = (t.row + 0.5) * TILE_PY;
+          // Muzzle flash at the barrel tip: offset toward the fired target so
+          // the spark appears where the barrel points, not the tile center.
+          let mx = sx, my = sy;
+          if (typeof t.targetX === 'number' && typeof t.targetY === 'number') {
+            const dx = t.targetX - sx;
+            const dy = t.targetY - sy;
+            const len = Math.hypot(dx, dy) || 1;
+            mx = sx + (dx / len) * TILE_PX * 0.42;
+            my = sy + (dy / len) * TILE_PX * 0.42;
+          }
+          muzzleFlashes.push({ x: mx, y: my, ttl: MUZZLE_TTL });
+          // Visible projectile flying toward the creep this tower just shot.
+          if (typeof t.targetX === 'number' && typeof t.targetY === 'number') {
+            projectiles.push({ sx: sx, sy: sy, tx: t.targetX, ty: t.targetY, ttl: PROJ_TTL });
+          }
         }
         lastCooldownFrac[key] = cur;
       }
     }
 
-    if (s.enemies) display.enemies = s.enemies;
+    if (s.enemies) {
+      // Detect deaths: enemies present last frame but gone now (stable id
+      // missing) burst into particles at their last known position.
+      const prev = display.enemies;
+      if (Array.isArray(prev)) {
+        const nowIds = new Set();
+        for (const e of s.enemies) if (e.id != null) nowIds.add(e.id);
+        for (const e of prev) {
+          if (e.id != null && !nowIds.has(e.id)) {
+            // A creep vanishing at the bottom exit leaked past the maze — a
+            // red burst + a jolt so the loss reads as a hit to the player.
+            if (e.y > canvas.height - TILE_PY) {
+              spawnDeathBurst(e.x, e.y, '#f87171');
+              addShake(5);
+            } else {
+              spawnDeathBurst(e.x, e.y, e.color || '#fbbf24');
+            }
+          }
+        }
+      }
+      display.enemies = s.enemies;
+    }
   }
 
   // Computer A reports damage -> brief red flash + floating damage text.
@@ -809,7 +1161,8 @@
     if (typeof d.x === 'number' && typeof d.y === 'number') {
       spawnFlash(d.x, d.y);
     }
-    spawnDamage(d.x, d.y, String(d.amount != null ? d.amount : '-0'));
+    const color = DMG_COLORS[d.type] || '#fca5a5';
+    spawnDamage(d.x, d.y, String(d.amount != null ? d.amount : '-0'), color);
   }
 
   // ---------- Mouse tracking (for hover range indicator) ----------
@@ -1146,6 +1499,7 @@
     if (!bossBannerEl) bossBannerEl = document.getElementById('boss-banner');
     if (bossBannerEl) bossBannerEl.classList.remove('hidden');
     bossBannerTimer = BOSS_BANNER_TTL;
+    addShake(6); // jolt when the boss lands so its arrival reads.
   }
   // Tick the boss banner off after its TTL.
   function tickBossBanner() {
