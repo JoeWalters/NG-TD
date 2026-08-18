@@ -50,6 +50,7 @@ function makeEl(id) {
     style: {},
     className: '',
     innerHTML: '',
+    _listeners: {},
     classList: {
       _set: new Set(),
       add(c) { this._set.add(c); },
@@ -57,7 +58,7 @@ function makeEl(id) {
       toggle(c, force) { if (force === undefined) { if (this._set.has(c)) this._set.delete(c); else this._set.add(c); } else if (force) this._set.add(c); else this._set.delete(c); },
       contains(c) { return this._set.has(c); }
     },
-    addEventListener() {},
+    addEventListener(name, fn) { (this._listeners[name] = this._listeners[name] || []).push(fn); },
     getBoundingClientRect() { return { left: 0, top: 0, width: 640, height: 640 }; },
     appendChild() {}
   };
@@ -93,7 +94,8 @@ const canvas = {
   height: 640,
   getBoundingClientRect() { return { left: 0, top: 0, width: 640, height: 640 }; },
   getContext() { return ctx2d; },
-  addEventListener() {}
+  _listeners: {},
+  addEventListener(name, fn) { (this._listeners[name] = this._listeners[name] || []).push(fn); }
 };
 
 const ctx = vm.createContext({
@@ -153,9 +155,34 @@ function makeSnapshot(opts) {
   };
 }
 
+// Click simulation: canvas listeners are invoked with a synthetic event whose
+// clientX/clientY map to a grid tile (TILE = 64, so center = col*64+32).
+// Returns the list of events the renderer dispatched during the click.
+function clickCanvas(col, row, kind) {
+  const evt = { clientX: col * 64 + 32, clientY: row * 64 + 32 };
+  const fns = canvas._listeners[kind] || [];
+  for (const fn of fns) fn(evt);
+}
+function clickEl(id, kind) {
+  const elm = document.getElementById(id);
+  const fns = (elm._listeners[kind] || []).slice();
+  for (const fn of fns) fn({});
+}
+function dispatchedEvents() {
+  return (listeners['__dispatched__'] = listeners['__dispatched__'] || []);
+}
+function resetDispatched() { dispatchedEvents().length = 0; }
+// Record every CustomEvent dispatched on window (renderer -> logic traffic).
+const origDispatch = win.dispatchEvent.bind(win);
+win.dispatchEvent = function (evt) {
+  dispatchedEvents().push({ type: evt.type, detail: evt.detail });
+  return origDispatch(evt);
+};
+
 module.exports = {
   fire, renderFrames, resetDrawCounts, getCount,
   makeSnapshot, ctx2d, drawCounts, countStyle, resetStyleLog,
   el: (id) => (els[id] ? els[id] : document.getElementById(id)),
-  resetRectLog, rectLog
+  resetRectLog, rectLog,
+  clickCanvas, clickEl, dispatchedEvents, resetDispatched
 };

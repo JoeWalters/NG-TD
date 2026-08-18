@@ -31,7 +31,11 @@
     hoverTile: null, // {row, col} under the mouse cursor
     // Path design: renderer-local drawing state for the player-designed maze.
     pathDesign: {
-      active: false,      // true only before wave 1 and not yet committed
+      // active (from Computer A) = design is PERMITTED (before wave 1).
+      active: false,
+      // designMode (renderer-local) = the player is actively shaping the maze
+      // right now. Entered via the Edit/Create Path button, NOT automatically.
+      designMode: false,
       drawn: [],          // ordered cells the player has drawn so far
       committed: false    // true once the drawn path has been accepted
     }
@@ -172,7 +176,7 @@
 
     // Draw the player's in-progress path design as a bright lane so they can
     // see exactly what maze they're shaping before committing.
-    if (display.pathDesign.active && Array.isArray(display.pathDesign.drawn)) {
+    if (display.pathDesign.designMode && Array.isArray(display.pathDesign.drawn)) {
       const drawn = display.pathDesign.drawn;
       for (let i = 0; i < drawn.length; i++) {
         const c = drawn[i];
@@ -905,18 +909,32 @@
     const nameEl = document.getElementById('next-wave-name');
     if (nameEl) nameEl.textContent = display.waveName;
 
-    // Path design controls: Done/Reset are optional tools shown while
-    // designing. Start Wave is ALWAYS available — path design is optional, so
-    // a player who skips it simply plays on the default S-curve maze.
-    const designing = display.pathDesign.active;
+    // Path design controls. The Edit/Create Path button is the OPT-IN entry to
+    // maze design and only shows while design is still permitted (before wave
+    // 1). Done/Reset are shown only while the player is actively designing.
+    // Start Wave is ALWAYS available — a player who skips design simply plays
+    // on the default S-curve maze, and can place towers freely meanwhile.
+    const permitted = display.pathDesign.active;
+    const designing = display.pathDesign.designMode;
+    if (pathEditBtn) {
+      pathEditBtn.classList.toggle('hidden', !permitted || designing);
+      // Label reflects whether a path already exists: Create vs Edit.
+      pathEditBtn.textContent = display.pathDesign.committed ? 'Edit Path' : 'Create Path';
+    }
     if (pathDoneBtn) pathDoneBtn.classList.toggle('hidden', !designing);
     if (pathResetBtn) pathResetBtn.classList.toggle('hidden', !designing);
     if (startBtn) startBtn.classList.remove('hidden');
+
+    // If design permission ends (wave 1 starts), force out of design mode.
+    if (!permitted && designing) {
+      display.pathDesign.designMode = false;
+      display.pathDesign.drawn.length = 0;
+    }
   }
 
   // Draw the design-mode instruction banner over the canvas.
   function drawPathDesignHud() {
-    if (!display.pathDesign.active) return;
+    if (!display.pathDesign.designMode) return;
     ctx.save();
     ctx.globalAlpha = 0.95;
     ctx.fillStyle = '#1e293b';
@@ -1173,7 +1191,7 @@
     display.hoverTile = tile;
     // Drag-to-draw: while the mouse is down in path-design mode, keep chaining
     // adjacent cells into the drawn path.
-    if (designDragging && display.pathDesign.active && tile) {
+    if (designDragging && display.pathDesign.designMode && tile) {
       if (designAddCell(tile)) {
         dispatchPathDraw();
       }
@@ -1181,7 +1199,7 @@
   });
 
   canvas.addEventListener('mousedown', function (evt) {
-    if (display.pathDesign.active) designDragging = true;
+    if (display.pathDesign.designMode) designDragging = true;
   });
 
   window.addEventListener('mouseup', function () {
@@ -1236,7 +1254,7 @@
     if (!tile) return;
 
     // Path design mode: clicks draw the creep lane instead of building.
-    if (display.pathDesign.active) {
+    if (display.pathDesign.designMode) {
       if (designAddCell(tile)) {
         dispatchPathDraw();
       }
@@ -1308,7 +1326,7 @@
       const p = canvasPoint(t);
       display.hoverTile = tileAt(p.x, p.y) || null;
       // Drag-to-draw: while touching in path-design mode, chain adjacent cells.
-      if (display.pathDesign.active && display.hoverTile) {
+      if (display.pathDesign.designMode && display.hoverTile) {
         if (designAddCell(display.hoverTile)) {
           dispatchPathDraw();
         }
@@ -1396,18 +1414,32 @@
     );
   });
 
-  // ---------- Path design buttons (Done / Reset) ----------
+  // ---------- Path design buttons (Edit/Create, Done, Reset) ----------
+  const pathEditBtn = document.getElementById('path-edit');
   const pathDoneBtn = document.getElementById('path-done');
   const pathResetBtn = document.getElementById('path-reset');
+  if (pathEditBtn) {
+    // Enter maze design. This is OPT-IN: normal clicks keep placing towers
+    // until the player asks to shape the path.
+    pathEditBtn.addEventListener('click', function () {
+      if (!display.pathDesign.active) return; // only before wave 1
+      display.pathDesign.designMode = true;
+      // Start a fresh drawing (the existing committed path stays on the grid
+      // as a reference while they redraw).
+      display.pathDesign.drawn.length = 0;
+    });
+  }
   if (pathDoneBtn) {
     pathDoneBtn.addEventListener('click', function () {
-      if (!display.pathDesign.active) return;
+      if (!display.pathDesign.designMode) return;
       window.dispatchEvent(new CustomEvent(GAME_EVENTS.COMMIT_PATH, { detail: {} }));
+      // Leave design mode; the committed path is now locked in until wave 1.
+      display.pathDesign.designMode = false;
     });
   }
   if (pathResetBtn) {
     pathResetBtn.addEventListener('click', function () {
-      if (!display.pathDesign.active) return;
+      if (!display.pathDesign.designMode) return;
       // Clear the renderer-local drawing so the design starts fresh.
       display.pathDesign.drawn.length = 0;
       window.dispatchEvent(new CustomEvent(GAME_EVENTS.RESET_PATH, { detail: {} }));
@@ -1603,8 +1635,18 @@
     display.enemies = [];
     display.hoverTile = null;
     display.pathDesign.active = false;
+    display.pathDesign.designMode = false;
     display.pathDesign.drawn = [];
     display.pathDesign.committed = false;
+    // Inform the player that tower building is free and maze design is opt-in.
+    if (!toastEl) toastEl = document.getElementById('toast');
+    if (toastEl) {
+      toastEl.textContent = 'Place towers freely — hit Create Path to shape your own maze (optional).';
+      toastEl.style.borderColor = '#38bdf8';
+      toastEl.style.color = '#38bdf8';
+      toastEl.classList.add('show');
+      toastTimer = TOAST_TTL;
+    }
   }
 
   // ---------- Victory overlay ----------

@@ -24,7 +24,7 @@
     magnet:  { cost: 120, damage: 0, range: 2.5, fireRate: 0, color: '#e879f9', splash: false, attack: false, magnet: true, pullSpeed: 26 },
     // Redirect: teleports creeps that enter its inner zone a few waypoints
     // BACKWARD, making them re-walk that stretch so nearby towers get more shots.
-    redirect:{ cost: 130, damage: 0, range: 1.2, fireRate: 0, color: '#34d399', splash: false, attack: false, redirect: true, redirectSkip: 2 }
+    redirect:{ cost: 130, damage: 0, range: 1.2, fireRate: 0, color: '#34d399', splash: false, attack: false, redirect: true, redirectSkip: CONFIG.BALANCE.REDIRECT_SKIP, redirectCooldown: CONFIG.BALANCE.REDIRECT_COOLDOWN, redirectMax: CONFIG.BALANCE.REDIRECT_MAX }
   };
 
   // ---------- Enemy / wave constants ----------
@@ -40,6 +40,11 @@
   const HP_PER_WAVE = CONFIG.BALANCE.HP_PER_WAVE;   // +15% enemy HP per wave
   const COUNT_PER_WAVE = CONFIG.BALANCE.COUNT_PER_WAVE; // +2 enemies per wave
   const MAX_DT = CONFIG.BALANCE.MAX_DT;             // clamp dt on tab switch
+
+  // Redirect tower tuning (single source of truth, see CONFIG.BALANCE).
+  const REDIRECT_COOLDOWN = CONFIG.BALANCE.REDIRECT_COOLDOWN; // per-creep min gap
+  const REDIRECT_MAX = CONFIG.BALANCE.REDIRECT_MAX;           // max redirects per creep
+  const REDIRECT_SKIP = CONFIG.BALANCE.REDIRECT_SKIP;         // waypoints set back
 
   // Clearing this wave wins the game (a concrete goal instead of endless waves).
   const VICTORY_WAVE = CONFIG.BALANCE.VICTORY_WAVE;
@@ -428,6 +433,11 @@
       if (e.slowTimer > 0) {
         e.slowTimer = Math.max(0, e.slowTimer - dt);
       }
+      // Redirect cooldown ticks down regardless of whether any redirect tower
+      // is in range, so a creep can eventually pass the zone.
+      if (e.redirectTimer > 0) {
+        e.redirectTimer = Math.max(0, e.redirectTimer - dt);
+      }
 
       if (d <= step) {
         // Reached this waypoint — advance along the path.
@@ -531,12 +541,20 @@
         // Teleport creeps inside the redirect zone a few waypoints BACKWARD,
         // so they must re-walk that stretch of the lane — giving your towers
         // extra shots instead of letting the creeps shortcut toward the exit.
+        // Each creep is redirected at most redirectMax times, and only if
+        // redirectCooldown seconds have passed since its last redirect, so
+        // the zone delays creeps a finite, re-walkable amount — never a wall.
         for (let i = state.enemies.length - 1; i >= 0; i--) {
           const e = state.enemies[i];
           if (dist(tx, ty, e.x, e.y) > rangePx) continue;
+          const rmax = def.redirectMax || 0;
+          if ((e.redirects || 0) >= rmax) continue; // already stalled enough
+          if (e.redirectTimer > 0) continue;         // not yet allowed again
           e.pathIndex = Math.max(1, e.pathIndex - def.redirectSkip);
           e.x = WAYPOINTS[e.pathIndex].x;
           e.y = WAYPOINTS[e.pathIndex].y;
+          e.redirectTimer = def.redirectCooldown || 0;
+          e.redirects = (e.redirects || 0) + 1;
         }
         dirty = true;
         continue;
@@ -702,10 +720,12 @@
       },
       grid: state.grid,
       path: PATH_CELLS,
-      // Path-design info: whether the player can still design the path, the
-      // cells they've drawn so far, and whether it has been committed.
+      // Path-design info: whether the player may still design the path (any
+      // time before the first wave starts), the cells drawn so far, and whether
+      // a path has been committed. Design is OPT-IN from the renderer's
+      // Edit/Create Path button — this only reports permission, not mode.
       pathDesign: {
-        active: state.wave === 0 && !pathCommitted,
+        active: state.wave === 0,
         drawn: drawnPath || [],
         committed: pathCommitted
       },
@@ -1024,8 +1044,9 @@
   function onPathDraw(evt) {
     const d = evt.detail;
     if (!d || !Array.isArray(d.cells)) return;
-    // Only allowed before the first wave and before committing.
-    if (state.wave !== 0 || pathCommitted) return;
+    // Only allowed before the first wave starts. Re-drawing (editing) an
+    // already-committed path is fine as long as the wave hasn't begun.
+    if (state.wave !== 0) return;
     drawnPath = d.cells.map(function (c) {
       return { row: c.row, col: c.col };
     });
@@ -1033,14 +1054,14 @@
 
   // Renderer dispatches COMMIT_PATH with {} to finalize the drawn path.
   function onCommitPath() {
-    if (state.wave !== 0 || pathCommitted) return;
+    if (state.wave !== 0) return;
     commitDrawnPath(drawnPath);
     dirty = true;
   }
 
   // Renderer dispatches RESET_PATH with {} to clear the design back to default.
   function onResetPath() {
-    if (state.wave !== 0 || pathCommitted) return;
+    if (state.wave !== 0) return;
     drawnPath = null;
     pathCommitted = false;
     PATH_CELLS = DEFAULT_PATH_CELLS.slice();

@@ -205,7 +205,8 @@
     #start-wave:hover { filter: brightness(1.12); transform: translateY(-1px); }
 
     /* ---- Path design buttons ---- */
-    #path-done, #path-reset {
+    /* Edit/Create Path is the opt-in entry to maze design (next to Start Wave). */
+    #path-edit, #path-done, #path-reset {
       background: var(--bg);
       color: var(--text);
       border: 1px solid var(--panel-border);
@@ -215,7 +216,8 @@
       cursor: pointer;
       transition: all 0.15s ease;
     }
-    #path-done.hidden, #path-reset.hidden { display: none; }
+    #path-edit.hidden, #path-done.hidden, #path-reset.hidden { display: none; }
+    #path-edit:hover { border-color: #f59e0b; color: #fde68a; }
     #path-done { border-color: #22c55e; color: #22c55e; }
     #path-done:hover { filter: brightness(1.15); }
     #path-reset:hover { border-color: #f87171; color: #f87171; }
@@ -673,6 +675,7 @@
       <button class="type-btn" data-type="redirect">Redirect<span class="type-tip">Teleports creeps in its zone a few steps back — they re-walk that stretch.</span></button>
     </div>
     <span class="hud-sep"></span>
+    <button id="path-edit" class="hidden">Create Path</button>
     <button id="path-done" class="hidden">Done Path</button>
     <button id="path-reset" class="hidden">Reset</button>
     <button id="start-wave">Start Wave</button>

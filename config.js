@@ -35,6 +35,14 @@ const CONFIG = {
     UPGRADE_DAMAGE_MULT: 1.25, // +25% damage per level
     UPGRADE_RANGE_MULT: 1.1,   // +10% range per level
 
+    // Redirect tower tuning: it must delay creeps a finite, re-walkable
+    // amount, NOT stall them forever. Each creep is redirected at most
+    // REDIRECT_MAX times, and only if REDIRECT_COOLDOWN seconds have passed
+    // since its last redirect, so it can never be made impassable.
+    REDIRECT_COOLDOWN: 2.5, // min seconds between redirects of the same creep
+    REDIRECT_MAX: 2,        // max redirects a single creep can receive
+    REDIRECT_SKIP: 2,       // waypoints a redirect pushes a creep back
+
     // Win condition
     VICTORY_WAVE: 20       // clearing this wave wins the game
   }
