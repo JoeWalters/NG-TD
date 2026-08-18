@@ -57,7 +57,6 @@ const TOWER_ROLES = {
   frost: 'Slows enemies. Low damage, keeps the lane safe.',
   bounty: 'Pays bonus cash for every creep killed inside its range.',
   buff: 'Aura that boosts the damage of nearby towers.',
-  magnet: 'Gently pulls creeps inside its radius toward it, dragging them off the lane.',
   redirect: 'Teleports creeps that enter its zone a few steps back along the path, so they must re-walk that stretch.'
 };
 

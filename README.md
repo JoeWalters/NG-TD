@@ -64,7 +64,6 @@ Targeting modes: **N**earest (default), **F**irst (furthest along path), **S**tr
 | Frost | 70 | Low damage, but slows creeps (pairs great with Splash). |
 | Bounty | 100 | Pays bonus cash for every kill inside its range. |
 | Buff | 110 | Aura that boosts nearby towers' damage. |
-| Magnet | 120 | Gently pulls creeps toward it, off the lane. |
 | Redirect | 130 | Teleports creeps a few steps back along the path, forcing them to re-walk that stretch. |
 
 ## Enemies

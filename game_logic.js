@@ -19,9 +19,6 @@
     bounty:  { cost: 100, damage: 0, range: 2.5, fireRate: 0, color: '#f97316', splash: false, attack: false, bounty: true, bountyBonus: 6 },
     // Buff: a radius aura that boosts the damage of nearby towers.
     buff:    { cost: 110, damage: 0, range: 2.0, fireRate: 0, color: '#facc15', splash: false, attack: false, buff: true, buffDamageMult: 1.4 },
-    // Magnet: gently pulls creeps inside its radius toward it, dragging them
-    // off the lane so other towers get an easier shot.
-    magnet:  { cost: 120, damage: 0, range: 2.5, fireRate: 0, color: '#e879f9', splash: false, attack: false, magnet: true, pullSpeed: 26 },
     // Redirect: teleports creeps that enter its inner zone a few waypoints
     // BACKWARD, making them re-walk that stretch so nearby towers get more shots.
     redirect:{ cost: 130, damage: 0, range: 1.2, fireRate: 0, color: '#34d399', splash: false, attack: false, redirect: true, redirectSkip: CONFIG.BALANCE.REDIRECT_SKIP, redirectCooldown: CONFIG.BALANCE.REDIRECT_COOLDOWN, redirectMax: CONFIG.BALANCE.REDIRECT_MAX }
@@ -524,19 +521,6 @@
       const rangePx = rng * TILE;
 
       // ----- Utility towers (no attack) -----
-      if (def.magnet) {
-        // Pull every creep inside the magnet's radius toward its center.
-        for (const e of state.enemies) {
-          const d = dist(tx, ty, e.x, e.y);
-          if (d > rangePx || d === 0) continue;
-          const pull = def.pullSpeed * dt;
-          const step = Math.min(pull, d);
-          e.x += ((tx - e.x) / d) * step;
-          e.y += ((ty - e.y) / d) * step;
-        }
-        dirty = true;
-        continue;
-      }
       if (def.redirect) {
         // Teleport creeps inside the redirect zone a few waypoints BACKWARD,
         // so they must re-walk that stretch of the lane — giving your towers
@@ -715,7 +699,6 @@
         frost:    TOWERS.frost,
         bounty:   TOWERS.bounty,
         buff:     TOWERS.buff,
-        magnet:   TOWERS.magnet,
         redirect: TOWERS.redirect
       },
       grid: state.grid,

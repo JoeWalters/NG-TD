@@ -90,7 +90,6 @@
     frost: '#67e8f9',
     bounty: '#fdba74',
     buff: '#fde68a',
-    magnet: '#f0abfc',
     redirect: '#6ee7b7'
   };
 
@@ -225,7 +224,6 @@
     frost: '#22d3ee',
     bounty: '#f97316',
     buff: '#facc15',
-    magnet: '#e879f9',
     redirect: '#34d399'
   };
 
@@ -383,13 +381,6 @@
         ctx.beginPath();
         ctx.arc(cx, cy, 6, 0, Math.PI * 2);
         ctx.fill();
-      } else if (t.type === 'magnet') {
-        // A horseshoe magnet: two prongs plus a connecting bar.
-        ctx.fillStyle = 'rgba(0,0,0,0.25)';
-        ctx.fillRect(cx - 7, cy - 6, 14, 5);
-        ctx.fillRect(cx - 7, cy + 1, 3, 8);
-        ctx.fillRect(cx + 4, cy + 1, 3, 8);
-        ctx.fillStyle = color;
         ctx.fillRect(cx - 7, cy - 7, 14, 4);
       } else if (t.type === 'redirect') {
         // A curved arrow: an arc with a chevron head.
@@ -477,15 +468,6 @@
           ctx.beginPath();
           ctx.arc(acx, acy, auraRadius, 0, Math.PI * 2);
           ctx.fill();
-        } else if (t.type === 'magnet') {
-          ctx.strokeStyle = 'rgba(232,121,249,0.5)';
-          ctx.lineWidth = 2;
-          ctx.beginPath();
-          ctx.arc(acx, acy, auraRadius, 0, Math.PI * 2);
-          ctx.stroke();
-          ctx.fillStyle = 'rgba(232,121,249,0.05)';
-          ctx.beginPath();
-          ctx.arc(acx, acy, auraRadius, 0, Math.PI * 2);
           ctx.fill();
         } else if (t.type === 'redirect') {
           ctx.strokeStyle = 'rgba(52,211,153,0.5)';
@@ -1499,8 +1481,8 @@
   }
 
   // ---------- Tower type selector (renderer UI concern) ----------
-  // The order of TOWER_ORDER must match the hotkeys 1..9.
-  const TOWER_ORDER = ['basic', 'sniper', 'cannon', 'splash', 'frost', 'bounty', 'buff', 'magnet', 'redirect'];
+  // The order of TOWER_ORDER must match the hotkeys 1..8.
+  const TOWER_ORDER = ['basic', 'sniper', 'cannon', 'splash', 'frost', 'bounty', 'buff', 'redirect'];
 
   function selectType(type) {
     selectedType = type;
