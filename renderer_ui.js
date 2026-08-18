@@ -1532,9 +1532,11 @@
     if (!toastEl) toastEl = document.getElementById('toast');
     if (!toastEl) return;
     const interest = d.interest || 0;
+    const kills = d.kills || 0;
+    const killCash = d.killCash || 0;
     const wave = d.wave || 0;
     // "Wave X cleared — +$Y interest" (or "+$0" when no interest applies).
-    toastEl.textContent = 'Wave ' + wave + ' cleared +$' + interest + ' interest';
+    toastEl.textContent = 'Wave ' + wave + ' cleared · ' + kills + ' kills ($' + killCash + ') · +$' + interest + ' interest';
     toastEl.classList.add('show');
     toastTimer = TOAST_TTL;
   }

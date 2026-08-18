@@ -273,6 +273,8 @@
   let spawnTimer = 0;    // seconds until the next spawn
   let waveActive = false;
   let spawnedThisWave = 0; // how many enemies have spawned this wave
+  let waveKills = 0;       // creeps defeated in the current wave
+  let waveKillCash = 0;    // cash earned from kills in the current wave
   // Boss-choice modifier: id of the chosen modifier for the next boss wave,
   // or null when none has been picked yet.
   let bossModifier = null;
@@ -398,7 +400,7 @@
           }
         }
         // Tell the renderer how much the wave clear earned (income toast).
-        emit(GAME_EVENTS.WAVE_CLEARED, { wave: state.wave, interest: interest });
+        emit(GAME_EVENTS.WAVE_CLEARED, { wave: state.wave, interest: interest, kills: waveKills, killCash: waveKillCash });
       }
       return;
     }
@@ -604,6 +606,8 @@
             const reward = killReward(e.type, e.rewardMult);
             state.cash += reward;
             state.kills++;
+            waveKillCash += reward;
+            waveKills++;
             bountyOnKill(e.x, e.y);
           }
         }
@@ -627,6 +631,8 @@
           const reward = killReward(best.type, best.rewardMult);
           state.cash += reward;
           state.kills++;
+          waveKillCash += reward;
+          waveKills++;
           bountyOnKill(best.x, best.y);
         }
       }
@@ -970,6 +976,8 @@
     spawnTimer = 0;
     waveActive = true;
     spawnedThisWave = 0;
+    waveKills = 0;
+    waveKillCash = 0;
     dirty = true;
   }
 
