@@ -36,7 +36,7 @@ The page loads three scripts in this fixed order:
    S-curve maze is used — hit **Start Wave** to begin.
 2. **Place towers** on empty tiles along the path. Click a tower to **upgrade**,
    right-click to **sell**, press **M** (or the Mode button) to cycle its targeting.
-3. **Start Wave** to send the next pack. Keep **Lives** above 0 — each leak costs a life.
+3. **Start Wave** to send the next pack. Keep **Lives** above 0 — each leak costs a life (bigger threats leak more: tank 2, boss 5).
 4. Clear **20 waves** to win. Lose all 20 lives and it's game over.
 
 ## Controls

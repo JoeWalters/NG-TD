@@ -72,6 +72,17 @@
     regener:  14
   };
 
+    // Lives lost when a creep leaks past the exit. Bigger/buck threats cost
+    // more, so a boss slip-through is a real setback, not the same as a scout.
+    const LEAK_COST_BY_TYPE = {
+      normal: 1,
+      scout:    1,
+      tank:     2,
+      boss:     5,
+      shielded: 1,
+      regener:   1
+    };
+
   // Slow effect constants: applied by frost towers to creeps in range.
   const SLOW_FACTOR = 0.4;   // creeps move at 40% speed while slowed
   const SLOW_DURATION = 2.0; // seconds the slow lasts per application
@@ -442,11 +453,12 @@
         e.y = target.y;
         e.pathIndex++;
         if (e.pathIndex >= WAYPOINTS.length) {
-          // Reached the end: leak a life and remove the creep.
-          state.lives = Math.max(0, state.lives - 1);
-          state.enemies.splice(i, 1);
-          if (state.lives === 0) triggerGameOver();
-          continue;
+            // Reached the end: leak lives (per-type cost) and remove the creep.
+            const leakCost = LEAK_COST_BY_TYPE[e.type] || 1;
+            state.lives = Math.max(0, state.lives - leakCost);
+            state.enemies.splice(i, 1);
+            if (state.lives === 0) triggerGameOver();
+            continue;
         }
       } else {
         e.x += (dx / d) * step;
