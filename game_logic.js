@@ -296,21 +296,22 @@
   let spawnedThisWave = 0; // how many enemies have spawned this wave
   let waveKills = 0;       // creeps defeated in the current wave
   let waveKillCash = 0;    // cash earned from kills in the current wave
-  // Boss-choice modifier: id of the chosen modifier for the next boss wave,
-  // or null when none has been picked yet.
-  let bossModifier = null;
+  // Wave-choice modifier: id of the chosen modifier for the next wave, or
+  // null when none has been picked yet. Offered before EVERY wave so the player
+  // can shape any wave, not just boss waves.
+  let waveModifier = null;
 
   // Player-chosen run settings (from the renderer's settings bar).
   // difficulty: 'normal' | 'lethal'  (lethal starts with a single life)
   // mode:       'campaign' | 'endless' (endless has no victory; waves keep ramping)
   let settings = { difficulty: 'normal', mode: 'campaign' };
 
-  // Boss-choice modifiers offered before a boss wave. Each option tweaks the
-  // upcoming boss encounter in a distinct way.
-  const BOSS_MODIFIERS = [
+  // Wave-choice modifiers offered before each wave. Each option tweaks the
+  // upcoming wave's enemies in a distinct way.
+  const WAVE_MODIFIERS = [
     { id: 'cash',   label: 'Extra Cash',   desc: '+$60 now to spend on defenses.', cashBonus: 60 },
-    { id: 'frail',  label: 'Frail Boss',   desc: 'The boss has 60% HP this wave.', hpMult: 0.6, rewardMult: 1 },
-    { id: 'bounty', label: 'Risky Bounty', desc: 'The boss has 200% HP but pays double.', hpMult: 2.0, rewardMult: 2 }
+    { id: 'frail',  label: 'Frail Wave',   desc: 'Every enemy has 60% HP this wave.', hpMult: 0.6, rewardMult: 1 },
+    { id: 'bounty', label: 'Risky Bounty', desc: 'Every enemy has 200% HP but pays double.', hpMult: 2.0, rewardMult: 2 }
   ];
 
 
@@ -949,56 +950,57 @@
     if (state.gameOver) return; // no waves after game over
     if (waveActive) return; // only one wave at a time
 
-    const queue = buildWaveQueue(state.wave + 1);
-    // Boss-choice gate: if the upcoming wave has a boss and no modifier has
-    // been picked yet, ask the player first instead of starting the wave.
-    const hasBoss = queue.some(function (t) { return t === 'boss'; });
-    if (hasBoss && bossModifier === null) {
-      emit(GAME_EVENTS.BOSS_MODIFIER_REQUEST, {
-        wave: state.wave + 1,
-        options: BOSS_MODIFIERS.map(function (m) { return { id: m.id, label: m.label, desc: m.desc }; })
-      });
-      return;
-    }
-
-    beginWave();
+  const queue = buildWaveQueue(state.wave + 1);
+  // Wave-choice gate: before starting ANY wave, offer the player a modifier
+  // pick (or Skip). Generalizes the old boss-only choice to every wave.
+  if (waveModifier === null) {
+    emit(GAME_EVENTS.WAVE_MODIFIER_REQUEST, {
+      wave: state.wave + 1,
+      options: WAVE_MODIFIERS.map(function (m) { return { id: m.id, label: m.label, desc: m.desc }; })
+    });
+    return;
   }
-
-  // Renderer dispatches BOSS_MODIFIER with { choice } after the player picks.
-  // A choice of 'skip' (or an unrecognized one) means "no modifier — send the wave".
-  function onBossModifier(evt) {
+  
+  beginWave();
+  }
+  
+  // Renderer dispatches WAVE_MODIFIER with { choice } after the player picks.
+  // A choice of 'skip' (or an unrecognized one) means "no modifier - send the wave".
+  function onWaveModifier(evt) {
     const d = evt.detail;
     if (!d || !d.choice) return;
     if (state.gameOver) return;
-    const mod = BOSS_MODIFIERS.find(function (m) { return m.id === d.choice; });
+    const mod = WAVE_MODIFIERS.find(function (m) { return m.id === d.choice; });
     if (mod) {
-      bossModifier = mod.id;
+      waveModifier = mod.id;
       // Cash-boost modifier pays out immediately so the player can build.
       if (mod.cashBonus) {
         state.cash += mod.cashBonus;
         dirty = true;
       }
     }
-    // If no matching modifier was picked (skip/cancel), bossModifier stays null
-    // so the wave starts with the default boss.
+    // If no matching modifier was picked (skip/cancel), waveModifier stays null
+    // so the wave starts unmodified.
     beginWave();
   }
-
+  
   function beginWave() {
     if (waveActive) return;
     state.wave++;
     spawnQueue = buildWaveQueue(state.wave);
-    // Apply the chosen boss modifier to any boss in this wave.
-    const mod = BOSS_MODIFIERS.find(function (m) { return m.id === bossModifier; });
+    // Apply the chosen wave modifier to every enemy in this wave.
+    const mod = WAVE_MODIFIERS.find(function (m) { return m.id === waveModifier; });
     if (mod) {
-      spawnQueue = spawnQueue.map(function (t) {
-        if (t === 'boss') {
-          if (mod.hpMult != null) return { type: 'boss', hpMult: mod.hpMult, rewardMult: mod.rewardMult || 1 };
-        }
-        return t;
-      });
+      if (mod.hpMult != null || mod.rewardMult != null) {
+        spawnQueue = spawnQueue.map(function (t) {
+          const entry = typeof t === 'string' ? { type: t } : t;
+          if (mod.hpMult != null) entry.hpMult = mod.hpMult;
+          if (mod.rewardMult != null) entry.rewardMult = mod.rewardMult;
+          return entry;
+        });
+      }
       // A modifier is consumed once applied.
-      bossModifier = null;
+      waveModifier = null;
     }
     spawnTimer = 0;
     waveActive = true;
@@ -1056,7 +1058,7 @@
     spawnTimer = 0;
     waveActive = false;
     spawnedThisWave = 0;
-    bossModifier = null;
+    waveModifier = null;
 
     // Reset speed & pause so a "Play Again" never resumes mid-pause or at
     // a boosted speed (matches the renderer's button labels reset).
@@ -1122,7 +1124,7 @@
   window.addEventListener(GAME_EVENTS.CHANGE_TARGET_MODE, onChangeTargetMode);
   window.addEventListener(GAME_EVENTS.TOGGLE_PAUSE, onTogglePause);
   window.addEventListener(GAME_EVENTS.SET_SPEED, onSetSpeed);
-  window.addEventListener(GAME_EVENTS.BOSS_MODIFIER, onBossModifier);
+  window.addEventListener(GAME_EVENTS.WAVE_MODIFIER, onWaveModifier);
   window.addEventListener(GAME_EVENTS.RESTART, onRestart);
   window.addEventListener(GAME_EVENTS.SETTINGS, onSettings);
   window.addEventListener(GAME_EVENTS.PATH_DRAW, onPathDraw);

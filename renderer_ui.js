@@ -1577,10 +1577,10 @@
     }
   }
 
-  // ---------- Boss choice modal ----------
+  // ---------- Wave choice modal ----------
   let bossChoiceEl = null;
   let bossChoiceOptionsEl = null;
-  function onBossModifierRequest(evt) {
+  function onWaveModifierRequest(evt) {
     const d = evt.detail || {};
     const options = Array.isArray(d.options) ? d.options : [];
     if (!bossChoiceEl) bossChoiceEl = document.getElementById('boss-choice');
@@ -1601,7 +1601,7 @@
       btn.addEventListener('click', function () {
         bossChoiceEl.classList.add('hidden');
         window.dispatchEvent(
-          new CustomEvent(GAME_EVENTS.BOSS_MODIFIER, { detail: { choice: opt.id } })
+          new CustomEvent(GAME_EVENTS.WAVE_MODIFIER, { detail: { choice: opt.id } })
         );
       });
       bossChoiceOptionsEl.appendChild(btn);
@@ -1614,7 +1614,7 @@
     skipBtn.addEventListener('click', function () {
       bossChoiceEl.classList.add('hidden');
       window.dispatchEvent(
-        new CustomEvent(GAME_EVENTS.BOSS_MODIFIER, { detail: { choice: 'skip' } })
+        new CustomEvent(GAME_EVENTS.WAVE_MODIFIER, { detail: { choice: 'skip' } })
       );
     });
     bossChoiceOptionsEl.appendChild(skipBtn);
@@ -1705,7 +1705,7 @@
   window.addEventListener(GAME_EVENTS.ENEMY_DAMAGED, onEnemyDamaged);
   window.addEventListener(GAME_EVENTS.GAME_OVER, onGameOver);
   window.addEventListener(GAME_EVENTS.BOSS_SPAWNED, onBossSpawned);
-  window.addEventListener(GAME_EVENTS.BOSS_MODIFIER_REQUEST, onBossModifierRequest);
+  window.addEventListener(GAME_EVENTS.WAVE_MODIFIER_REQUEST, onWaveModifierRequest);
   window.addEventListener(GAME_EVENTS.WAVE_CLEARED, onWaveCleared);
   window.addEventListener(GAME_EVENTS.VICTORY, onVictory);
   window.addEventListener(GAME_EVENTS.RESTART, onRestart);

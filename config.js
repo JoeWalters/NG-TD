@@ -77,8 +77,8 @@ const GAME_EVENTS = {
   SETTINGS: 'td:settings',                 // Sent by B -> Processed by A: difficulty/mode choice
   ENEMY_SPAWNED: 'td:enemy_spawned',       // Sent by A -> Used by B for spawn feedback
   BOSS_SPAWNED: 'td:boss_spawned',         // Sent by A -> Used by B to show the boss banner
-  BOSS_MODIFIER_REQUEST: 'td:boss_modifier_request', // Sent by A -> B shows boss-choice modal
-  BOSS_MODIFIER: 'td:boss_modifier',       // Sent by B -> A applies the chosen boss modifier
+  WAVE_MODIFIER_REQUEST: 'td:wave_modifier_request', // Sent by A -> B shows the wave-choice modal
+  WAVE_MODIFIER: 'td:wave_modifier',       // Sent by B -> A applies the chosen wave modifier
   WAVE_CLEARED: 'td:wave_cleared',         // Sent by A -> B shows the income toast
   VICTORY: 'td:victory',                 // Sent by A -> B shows the victory overlay
   GAME_OVER: 'td:game_over',             // Sent by A -> Used by B to show the game-over overlay
