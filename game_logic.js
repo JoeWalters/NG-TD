@@ -674,6 +674,20 @@
     }
   }
 
+  // Exact distance a creep has travelled along the path: full segments up to
+  // its current waypoint index plus the partial stretch into the next one.
+  // This distinguishes two creeps on the same segment (same pathIndex) by how
+  // far each has actually advanced, and stays correct after redirects.
+  function traveledDistance(e) {
+    let d = 0;
+    for (let i = 1; i < e.pathIndex; i++) {
+      d += dist(WAYPOINTS[i-1].x, WAYPOINTS[i-1].y, WAYPOINTS[i].x, WAYPOINTS[i].y);
+    }
+    const prev = WAYPOINTS[e.pathIndex - 1];
+    if (prev) d += dist(prev.x, prev.y, e.x, e.y);
+    return d;
+  }
+
   // Select the primary target for a tower.
   // Modes: 'nearest' (closest), 'first' (furthest along path), 'strong' (highest hp).
   // Scouts are prioritized as a tiebreaker since they are fast & dangerous.
@@ -689,7 +703,7 @@
       const isScout = e.type === 'scout';
       let score;
       if (mode === 'first') {
-        score = -e.pathIndex; // higher pathIndex = further along = preferred
+        score = -traveledDistance(e); // exact distance along path = preferred
       } else if (mode === 'strong') {
         score = -e.hp; // higher current hp = preferred
       } else {
