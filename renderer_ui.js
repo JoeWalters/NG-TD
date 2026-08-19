@@ -1577,6 +1577,21 @@
     }
   }
 
+  // ---------- Build-failure feedback ----------
+  // When a tower placement is rejected (no cash, on the path, occupied tile),
+  // show the reason briefly instead of silently doing nothing.
+  function onBuildFailed(evt) {
+    const d = evt.detail || {};
+    if (!toastEl) toastEl = document.getElementById('toast');
+    if (!toastEl) return;
+    const msg = d.message || 'Cannot build there';
+    toastEl.textContent = msg;
+    toastEl.style.borderColor = '#f87171';
+    toastEl.style.color = '#f87171';
+    toastEl.classList.add('show');
+    toastTimer = TOAST_TTL;
+  }
+
   // ---------- Wave choice modal ----------
   let bossChoiceEl = null;
   let bossChoiceOptionsEl = null;
@@ -1710,6 +1725,7 @@
   window.addEventListener(GAME_EVENTS.VICTORY, onVictory);
   window.addEventListener(GAME_EVENTS.RESTART, onRestart);
   window.addEventListener(GAME_EVENTS.PATH_STATUS, onPathStatus);
+  window.addEventListener(GAME_EVENTS.BUILD_FAILED, onBuildFailed);
 
   // ---------- Onboarding overlay dismiss ----------
   // The how-to overlay is shown on first load. Dismissing it hides the

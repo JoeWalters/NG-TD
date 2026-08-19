@@ -85,5 +85,6 @@ const GAME_EVENTS = {
   PATH_DRAW: 'td:path_draw',             // Sent by B -> A stores the drawn path cells during design
   COMMIT_PATH: 'td:commit_path',         // Sent by B -> A validates & commits the drawn path
   RESET_PATH: 'td:reset_path',           // Sent by B -> A resets the path back to the default
-  PATH_STATUS: 'td:path_status'          // Sent by A -> B reports path validation result
+  PATH_STATUS: 'td:path_status',         // Sent by A -> B reports path validation result
+  BUILD_FAILED: 'td:build_failed'         // Sent by A -> B shows why a build was rejected
 };

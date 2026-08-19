@@ -5,19 +5,33 @@ const chk = (n,c)=>{ console.log((c?'PASS':'FAIL')+'  '+n); ok = ok && c; };
 
 lh.fire('td:restart',{}); lh.tick(0.02,1);
 const snap = lh.latestSnapshot(), grid = snap.grid;
-dbg.spawn('normal');
-for(let f=0; f<18; f++) lh.tick(0.05,1);   // A ~54px into segment 1
-dbg.spawn('normal');                        // B at start, same segment 1
-const spot = [[0,5],[0,4],[1,4],[1,5]].find(([r,c])=> r>=0&&r<10&&c>=0&&c<10 && grid[r*10+c]===0);
-const mark = lh.emitted.length;
-lh.fire('td:tower_placed',{row:spot[0],col:spot[1],type:'basic'});
-lh.fire('td:change_target_mode',{row:spot[0],col:spot[1]});   // set 'first' BEFORE any tick fires
-lh.tick(0.02,1);                                              // tower fires in 'first' mode
-const ev = lh.emitted.slice(mark).find(e=>e.event==='td:enemy_damaged');
-const hitY = ev ? ev.detail.y : null;
-const es = dbg.state().enemies;
-const sameSeg = es[0].pathIndex === es[1].pathIndex;
-const aheadY = Math.max(es[0].y, es[1].y);
-chk('both on same segment (pathIndex='+es[0].pathIndex+')', sameSeg);
-chk('first mode picks exact AHEAD (hit='+(hitY?hitY.toFixed(0):'null')+' ahead='+aheadY.toFixed(0)+')', hitY!=null && Math.abs(hitY-aheadY) < 6);
-console.log(ok ? '\nITEM8 PASS' : '\nITEM8 FAIL');
+// empty tiles to work with
+const empties = [];
+for(let r=0;r<10;r++)for(let c=0;c<10;c++)if(grid[r*10+c]===0)empties.push([r,c]);
+
+const reasons = [];
+const tryBuild = (row,col,type) => {
+  const m = lh.emitted.length;
+  lh.fire('td:tower_placed',{row:row,col:col,type:type}); lh.tick(0.02,1);
+  const ev = lh.emitted.slice(m).find(e=>e.event==='td:build_failed');
+  if(ev) reasons.push(ev.detail.reason);
+};
+// path tile: (0,4) is on the path (grid 1)
+tryBuild(0,4,'basic');
+// drain cash: build 4 basics on empty tiles
+for(let i=0;i<4 && empties[i];i++) lh.fire('td:tower_placed',{row:empties[i][0],col:empties[i][1],type:'basic'});
+lh.tick(0.02,1);
+tryBuild(empties[5][0], empties[5][1], 'basic');      // no cash
+// occupied: same tile as first built tower
+tryBuild(empties[0][0], empties[0][1], 'basic');
+chk('path-tile failure reported', reasons.includes('path'));
+chk('cash failure reported', reasons.includes('cash'));
+chk('occupied failure reported', reasons.includes('occupied'));
+// valid build (after restart with cash) should NOT emit build_failed
+const m2 = lh.emitted.length;
+lh.fire('td:restart',{}); lh.tick(0.02,1);
+const m3 = lh.emitted.length;
+lh.fire('td:tower_placed',{row:empties[0][0],col:empties[0][1],type:'basic'}); lh.tick(0.02,1);
+const ev2 = lh.emitted.slice(m3).find(e=>e.event==='td:build_failed');
+chk('valid build does NOT emit build_failed', !ev2);
+console.log(ok ? '\nITEM9 PASS' : '\nITEM9 FAIL');

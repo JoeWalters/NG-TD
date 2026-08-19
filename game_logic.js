@@ -889,10 +889,22 @@
     if (!def) return;
 
     // Validate the tile: in bounds, not a path tile, not already occupied.
-    if (row < 0 || row >= ROWS || col < 0 || col >= COLS) return;
-    if (state.grid[row * COLS + col] !== 0) return;
-    if (state.towers.some(function (t) { return t.row === row && t.col === col; })) return;
-    if (state.cash < def.cost) return;
+    if (row < 0 || row >= ROWS || col < 0 || col >= COLS) {
+      emit(GAME_EVENTS.BUILD_FAILED, { reason: 'out-of-bounds', message: 'Out of bounds' });
+      return;
+    }
+    if (state.grid[row * COLS + col] !== 0) {
+      emit(GAME_EVENTS.BUILD_FAILED, { reason: 'path', message: 'Cannot build on the path' });
+      return;
+    }
+    if (state.towers.some(function (t) { return t.row === row && t.col === col; })) {
+      emit(GAME_EVENTS.BUILD_FAILED, { reason: 'occupied', message: 'Tile already occupied' });
+      return;
+    }
+    if (state.cash < def.cost) {
+      emit(GAME_EVENTS.BUILD_FAILED, { reason: 'cash', message: 'Not enough cash ($' + def.cost + ' needed)' });
+      return;
+    }
 
     // Deduct cash and spawn the tower.
     state.cash -= def.cost;
