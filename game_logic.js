@@ -647,10 +647,17 @@
         noteDamageTaken(best);
         emit(GAME_EVENTS.ENEMY_DAMAGED, { x: best.x, y: best.y, amount: applied, type: t.type });
 
-        // Frost towers also apply a slow effect to the target.
+        // Frost towers apply an area slow: every creep in range gets chilled,
+        // not just the primary target. Pairing with splash still rewards the
+        // frosted-creep bonus damage.
         if (def.slow) {
-          best.slowTimer = SLOW_DURATION;
-          best.slow = true; // hint for the renderer to tint the creep
+          for (let i = state.enemies.length - 1; i >= 0; i--) {
+            const e = state.enemies[i];
+            if (dist(tx, ty, e.x, e.y) > rangePx) continue;
+            e.slowTimer = SLOW_DURATION;
+            e.slow = true; // hint for the renderer to tint the creep
+            dirty = true;
+          }
         }
 
         if (best.hp <= 0) {

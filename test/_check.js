@@ -1,31 +1,33 @@
 const lh = require('./harness.js');
 const dbg = lh.win.__tdDebug;
-let ok=true;
-const chk=(n,c)=>{console.log((c?'PASS':'FAIL')+'  '+n);ok=ok&&c;};
-const last=(ev)=>{for(let i=lh.emitted.length-1;i>=0;i--)if(lh.emitted[i].event===ev)return lh.emitted[i].detail;return null;};
+let ok = true;
+const chk = (n,c)=>{ console.log((c?'PASS':'FAIL')+'  '+n); ok = ok && c; };
+const TILE = 64;
 
-lh.fire('td:wave_started',{});
-const req1 = last('td:wave_modifier_request');
-chk('wave 1 offers modifier (generalized)', !!req1 && req1.wave===1 && req1.options.length===3);
-chk('wave 1 did NOT start yet', dbg.state().wave===0);
+lh.fire('td:restart',{}); lh.tick(0.02,1);
+const snap = lh.latestSnapshot(), grid = snap.grid;
+const spot = [[0,5],[0,4],[1,4],[1,5]].find(([r,c])=> r>=0&&r<10&&c>=0&&c<10 && grid[r*10+c]===0);
+chk('placed frost tower', !!spot);
+lh.fire('td:tower_placed',{row:spot[0],col:spot[1],type:'frost'}); lh.tick(0.02,1);
+dbg.spawn('normal'); dbg.spawn('normal'); dbg.spawn('normal');
 
-lh.fire('td:wave_modifier',{choice:'frail'}); lh.tick(0.05,1);
-for(let f=0; f<30 && dbg.state().enemies.length===0; f++) lh.tick(0.05,1);
-const sp1 = dbg.state().enemies[0];
-chk('wave 1 started after modifier', dbg.state().wave===1);
-chk('frail applies to normal enemy (hp 45)', sp1 && sp1.hp===45);
-
-// Complete wave 1 (leak all 6 frail enemies), then wave 2 must also offer.
-let cleared=false;
-for(let f=0; f<5000; f++){ lh.tick(0.05,1); if(last('td:wave_cleared')){cleared=true;break;} }
-chk('wave 1 fully cleared', cleared);
-lh.fire('td:wave_started',{});
-const req2 = last('td:wave_modifier_request');
-chk('wave 2 offers modifier too', !!req2 && req2.wave===2);
-
-lh.fire('td:wave_modifier',{choice:'skip'}); lh.tick(0.05,1);
-for(let f=0; f<30 && dbg.state().enemies.length===0; f++) lh.tick(0.05,1);
-const sp2 = dbg.state().enemies[0];
-chk('skip -> unmodified hp (86.25)', sp2 && Math.abs(sp2.hp-86.25)<0.01);
-
-console.log(ok?'\nITEM6 PASS':'\nITEM6 FAIL');
+// Wait for the frost to fire (enemy hp drops from 63.75 to 58.75).
+let fired = false;
+for(let f=0; f<60 && !fired; f++){
+  lh.tick(0.05,1);
+  const e = dbg.state().enemies[0];
+  if(e && e.hp < 63.7) fired = true;
+}
+chk('frost fired', fired);
+// Measure displacement over 0.5s (10 ticks). Slowed: 60*0.4=24px/s -> 12px/0.5s.
+// Unslowed: 60px/s -> 30px/0.5s. All 3 in range should move ~12px.
+const p0 = dbg.state().enemies.map(e=>({x:e.x,y:e.y}));
+for(let f=0; f<10; f++) lh.tick(0.05,1);
+const es = dbg.state().enemies;
+let slowedCount = 0;
+for(let i=0;i<3 && es[i];i++){
+  const d = Math.hypot(es[i].x-p0[i].x, es[i].y-p0[i].y);
+  if(d < 18 && d > 6) slowedCount++;
+}
+chk('all in-range creeps slowed by AoE ('+slowedCount+'/3 slowed, ~12px/0.5s)', slowedCount === 3);
+console.log(ok ? '\nITEM7 PASS' : '\nITEM7 FAIL');
