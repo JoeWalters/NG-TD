@@ -37,7 +37,9 @@ The page loads three scripts in this fixed order:
 2. **Place towers** on empty tiles along the path. Click a tower to **upgrade**,
    right-click to **sell**, press **M** (or the Mode button) to cycle its targeting.
 3. **Start Wave** to send the next pack. Keep **Lives** above 0 — each leak costs a life (bigger threats leak more: tank 2, boss 5).
-4. Clear **20 waves** to win. Lose all 20 lives and it's game over.
+4. Clear **20 waves** to win in Campaign. Lose all your lives and it's game over.
+   - **Normal** difficulty: 20 lives. **Lethal**: just 1 life.
+   - **Endless** mode: after wave 20 there's no victory — keep clearing ever-tougher waves.
 
 ## Controls
 
@@ -50,8 +52,9 @@ The page loads three scripts in this fixed order:
 | Pause | **⏸ Pause** button | same |
 | Speed | **1×/2×/3×** button | same |
 
-Targeting modes: **N**earest (default), **F**irst (furthest along path), **S**trong
-(highest *current* HP — prioritizes the most dangerous remaining target).
+Targeting modes: **N**earest (default), **F**irst (furthest along the path — by exact
+distance travelled, so it picks the creep that's genuinely ahead even on the same
+stretch), **S**trong (highest *current* HP — prioritizes the most dangerous remaining target).
 
 ## Tower roster
 
@@ -61,7 +64,7 @@ Targeting modes: **N**earest (default), **F**irst (furthest along path), **S**tr
 | Sniper | 80 | Long range, picks off one target, high damage. |
 | Cannon | 60 | Big, slow, heavy single-target hits. |
 | Splash | 90 | Area damage on everything near its target. |
-| Frost | 70 | Low damage, but slows creeps (pairs great with Splash). |
+| Frost | 70 | Low damage, but chills **every** creep in range — a zone slow, not just one target (pairs great with Splash). |
 | Bounty | 100 | Pays bonus cash for every kill inside its range. |
 | Buff | 110 | Aura that boosts nearby towers' damage. |
 | Redirect | 130 | Teleports creeps a few steps back along the path, forcing them to re-walk that stretch. |
@@ -76,18 +79,26 @@ Targeting modes: **N**earest (default), **F**irst (furthest along path), **S**tr
 - **regener** — heals over time unless recently damaged.
 
 Enemies get tougher every wave (+15% HP) and waves grow (+2 enemies per wave).
-Clearing a wave earns interest (5% of unspent cash, capped) from wave 2 onward.
+Waves 1–20 are hand-tuned presets (bosses on 5/10/15/20); later waves are
+formula-generated and capped at 50 creeps so endless runs stay readable.
+Clearing a wave earns interest (5% of unspent cash, capped) from wave 2 onward,
+and the toast breaks income down into kills + kill-cash + interest.
+Creeps that leak cost lives by type: normal 1, tank 2, boss 5.
+
+Before every wave you pick a **modifier** that shapes it (or skip): **Frail**
+(every creep 60% HP), **Bounty** (every creep 200% HP, pays double), or **Reinforced**
+(every creep shielded). The choice applies to the whole wave, not just a boss.
 
 ## Architecture
 
 The two halves never share variables — they talk through `CustomEvent`s:
 
 - **A → B:** `STATE_UPDATED` (a render-only snapshot each frame), `ENEMY_DAMAGED`,
-  `WAVE_CLEARED`, `BOSS_SPAWNED`, `BOSS_MODIFIER_REQUEST`, `VICTORY`, `GAME_OVER`,
-  `PATH_STATUS`.
+  `WAVE_CLEARED`, `BOSS_SPAWNED`, `WAVE_MODIFIER_REQUEST`, `VICTORY`, `GAME_OVER`,
+  `PATH_STATUS`, `BUILD_FAILED`.
 - **B → A:** `TOWER_PLACED`, `UPGRADE_TOWER`, `SELL_TOWER`, `CHANGE_TARGET_MODE`,
-  `WAVE_STARTED`, `TOGGLE_PAUSE`, `SET_SPEED`, `RESTART`, `BOSS_MODIFIER`, `PATH_DRAW`,
-  `COMMIT_PATH`, `RESET_PATH`.
+  `WAVE_STARTED`, `TOGGLE_PAUSE`, `SET_SPEED`, `RESTART`, `SETTINGS`, `WAVE_MODIFIER`,
+  `PATH_DRAW`, `COMMIT_PATH`, `RESET_PATH`.
 
 Key design guarantees:
 
@@ -99,8 +110,10 @@ Key design guarantees:
   in the logic and shipped through the snapshot; the HUD displays them verbatim.
 - **Per-frame snapshot is cheap.** The upcoming-wave queue is cached per wave, and the
   grid render precomputes path/occupied lookup sets instead of scanning arrays per tile.
-- **No soft-locks.** The boss-choice modal has a "send it anyway" fallback, and
+- **No soft-locks.** The wave-modifier modal has a "send it anyway" fallback, and
   restart resets pause/speed/button labels so "Play Again" always starts clean.
+- **Rejected builds speak.** If a placement fails (no cash / on the path / occupied),
+  the logic emits `BUILD_FAILED` and the HUD toasts the reason instead of going silent.
 
 ## Project layout
 
