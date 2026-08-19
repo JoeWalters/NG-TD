@@ -1480,6 +1480,36 @@
     });
   }
 
+  // ---------- Run settings bar (difficulty / mode) ----------
+  // Two toggles dispatch SETTINGS to Computer A; the buttons highlight the
+  // non-default (lethal / endless) choice and keep their labels in sync.
+  const diffBtn = document.getElementById('diff-btn');
+  const modeBtn = document.getElementById('mode-btn');
+  let runDifficulty = 'normal';   // 'normal' | 'lethal'
+  let runMode = 'campaign';       // 'campaign' | 'endless'
+
+  function applyDiffLabel() {
+    if (diffBtn) { diffBtn.textContent = runDifficulty === 'lethal' ? 'Lethal' : 'Normal'; diffBtn.classList.toggle('active', runDifficulty === 'lethal'); }
+  }
+  function applyModeLabel() {
+    if (modeBtn) { modeBtn.textContent = runMode === 'endless' ? 'Endless' : 'Campaign'; modeBtn.classList.toggle('active', runMode === 'endless'); }
+  }
+
+  if (diffBtn) {
+    diffBtn.addEventListener('click', function () {
+      runDifficulty = runDifficulty === 'lethal' ? 'normal' : 'lethal';
+      applyDiffLabel();
+      window.dispatchEvent(new CustomEvent(GAME_EVENTS.SETTINGS, { detail: { difficulty: runDifficulty } }));
+    });
+  }
+  if (modeBtn) {
+    modeBtn.addEventListener('click', function () {
+      runMode = runMode === 'endless' ? 'campaign' : 'endless';
+      applyModeLabel();
+      window.dispatchEvent(new CustomEvent(GAME_EVENTS.SETTINGS, { detail: { mode: runMode } }));
+    });
+  }
+
   // ---------- Tower type selector (renderer UI concern) ----------
   // The order of TOWER_ORDER must match the hotkeys 1..8.
   const TOWER_ORDER = ['basic', 'sniper', 'cannon', 'splash', 'frost', 'bounty', 'buff', 'redirect'];

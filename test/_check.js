@@ -1,21 +1,23 @@
-// ITEM 4 validation: presets 11-20 + capped fallback for past-preset waves.
 const lh = require('./harness.js');
 const dbg = lh.win.__tdDebug;
-let ok = true;
-function chk(name, cond){ console.log((cond?'PASS':'FAIL')+'  '+name); ok = ok && cond; }
+let ok=true;
+const chk=(n,c)=>{console.log((c?'PASS':'FAIL')+'  '+n);ok=ok&&c;};
 
-// Preset waves return their hand-tuned arrays.
-const q20 = dbg.queueFor(20);
-chk('wave20 preset: 24 enemies, 5 bosses', q20.length===24 && q20.filter(t=>t==='boss').length===5);
-chk('wave15 preset: 2 bosses (Overlord)', dbg.queueFor(15).filter(t=>t==='boss').length===2);
-chk('wave14 preset: no boss', dbg.queueFor(14).filter(t=>t==='boss').length===0);
+lh.fire('td:restart',{}); lh.tick(0.02,1);
+chk('default: 20 lives, campaign', dbg.state().lives===20 && dbg.state().settings.mode==='campaign');
 
-// Past-preset (endless) waves use the capped formula.
-const q21 = dbg.queueFor(21);
-const expected21 = Math.min(6 + 20*2, 50);   // 46
-chk('wave21 fallback count capped ('+q21.length+')', q21.length===expected21);
-const q100 = dbg.queueFor(100);
-chk('wave100 count hits cap 50 ('+q100.length+')', q100.length===50);
-chk('wave100 has boss (wave%5==0)', q100[0]==='boss');
-chk('wave21 has regener (wave%7==0)', q21[1]==='regener');
-console.log(ok ? '\nITEM4 PASS' : '\nITEM4 FAIL');
+lh.fire('td:settings',{difficulty:'lethal'}); lh.tick(0.02,1);
+chk('lethal stored', dbg.state().settings.difficulty==='lethal');
+lh.fire('td:restart',{}); lh.tick(0.02,1);
+chk('lethal restart -> 1 life', dbg.state().lives===1);
+
+lh.fire('td:settings',{mode:'endless'}); lh.tick(0.02,1);
+chk('endless stored', dbg.state().settings.mode==='endless');
+
+lh.fire('td:settings',{difficulty:'bogus',mode:'bogus'}); lh.tick(0.02,1);
+chk('invalid settings ignored', dbg.state().settings.difficulty==='lethal' && dbg.state().settings.mode==='endless');
+
+lh.fire('td:restart',{}); lh.tick(0.02,1);
+chk('settings persist across restart', dbg.state().settings.difficulty==='lethal' && dbg.state().settings.mode==='endless' && dbg.state().lives===1);
+
+console.log(ok?'\nITEM5 PASS':'\nITEM5 FAIL');

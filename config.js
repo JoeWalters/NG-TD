@@ -45,7 +45,8 @@ const CONFIG = {
     REDIRECT_SKIP: 2,       // waypoints a redirect pushes a creep back
 
     // Win condition
-    VICTORY_WAVE: 20       // clearing this wave wins the game
+    VICTORY_WAVE: 20,      // clearing this wave wins the game
+    LETHAL_LIVES: 1         // lethal difficulty starts with a single life (any leak = game over)
   }
 };
 
@@ -73,6 +74,7 @@ const GAME_EVENTS = {
   TOGGLE_PAUSE: 'td:toggle_pause',         // Sent by B -> Processed by A to flip pause
   SET_SPEED: 'td:set_speed',               // Sent by B -> Processed by A to change game speed
   RESTART: 'td:restart',                   // Sent by B -> Processed by A to reset the game
+  SETTINGS: 'td:settings',                 // Sent by B -> Processed by A: difficulty/mode choice
   ENEMY_SPAWNED: 'td:enemy_spawned',       // Sent by A -> Used by B for spawn feedback
   BOSS_SPAWNED: 'td:boss_spawned',         // Sent by A -> Used by B to show the boss banner
   BOSS_MODIFIER_REQUEST: 'td:boss_modifier_request', // Sent by A -> B shows boss-choice modal

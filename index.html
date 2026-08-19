@@ -243,6 +243,12 @@
     .ctl-btn:hover { border-color: var(--accent); color: var(--accent); }
     .ctl-btn.active { border-color: var(--accent); color: var(--accent); background: #0c2436; }
 
+    #settings {
+      display: flex;
+      gap: 6px;
+    }
+    #settings .ctl-btn.active { border-color: var(--accent); color: var(--accent); background: #0c2436; }
+
     /* ---- Canvas ---- */
     #canvas-wrap {
       background: var(--bg);
@@ -682,6 +688,11 @@
     <div id="controls">
       <button class="ctl-btn" id="pause-btn">⏸ Pause</button>
       <button class="ctl-btn" id="speed-btn">1×</button>
+    </div>
+    <span class="hud-sep"></span>
+    <div id="settings">
+      <button class="ctl-btn" id="diff-btn" title="Lethal: start with 1 life — any leak ends the run">Normal</button>
+      <button class="ctl-btn" id="mode-btn" title="Endless: no victory, waves keep coming">Campaign</button>
     </div>
   </div>
 

@@ -300,6 +300,11 @@
   // or null when none has been picked yet.
   let bossModifier = null;
 
+  // Player-chosen run settings (from the renderer's settings bar).
+  // difficulty: 'normal' | 'lethal'  (lethal starts with a single life)
+  // mode:       'campaign' | 'endless' (endless has no victory; waves keep ramping)
+  let settings = { difficulty: 'normal', mode: 'campaign' };
+
   // Boss-choice modifiers offered before a boss wave. Each option tweaks the
   // upcoming boss encounter in a distinct way.
   const BOSS_MODIFIERS = [
@@ -405,7 +410,8 @@
         waveActive = false;
 
         // Victory: clearing the final wave ends the game on a high note.
-        if (state.wave === VICTORY_WAVE) {
+        // In endless mode there is no victory — the run simply continues.
+        if (state.wave === VICTORY_WAVE && settings.mode === 'campaign') {
           emit(GAME_EVENTS.VICTORY, { wave: state.wave, kills: state.kills });
           return;
         }
@@ -1026,7 +1032,9 @@
   // ---------- Restart: reset the whole game back to the opening state ----------
   function onRestart() {
     state.cash = CONFIG.STARTING_CASH;
-    state.lives = CONFIG.STARTING_LIVES;
+    // Lethal difficulty starts with a single life: any leak ends the run.
+    // Chosen settings persist across restarts so Play Again keeps the same run type.
+    state.lives = settings.difficulty === 'lethal' ? CONFIG.BALANCE.LETHAL_LIVES : CONFIG.STARTING_LIVES;
     state.wave = 0;
     state.kills = 0;
     state.gameOver = false;
@@ -1097,6 +1105,15 @@
     dirty = true;
   }
 
+  // ---------- Run settings (difficulty / mode) ----------
+  // The renderer's settings bar dispatches SETTINGS whenever the player toggles
+  // a choice. Values are validated against the known set; unknown ones are kept.
+  function onSettings(evt) {
+    const d = evt.detail || {};
+    if (d.difficulty === 'lethal' || d.difficulty === 'normal') settings.difficulty = d.difficulty;
+    if (d.mode === 'endless' || d.mode === 'campaign') settings.mode = d.mode;
+  }
+
   // ---------- Wire up events ----------
   window.addEventListener(GAME_EVENTS.TOWER_PLACED, onTowerPlaced);
   window.addEventListener(GAME_EVENTS.WAVE_STARTED, onWaveStarted);
@@ -1107,6 +1124,7 @@
   window.addEventListener(GAME_EVENTS.SET_SPEED, onSetSpeed);
   window.addEventListener(GAME_EVENTS.BOSS_MODIFIER, onBossModifier);
   window.addEventListener(GAME_EVENTS.RESTART, onRestart);
+  window.addEventListener(GAME_EVENTS.SETTINGS, onSettings);
   window.addEventListener(GAME_EVENTS.PATH_DRAW, onPathDraw);
   window.addEventListener(GAME_EVENTS.COMMIT_PATH, onCommitPath);
   window.addEventListener(GAME_EVENTS.RESET_PATH, onResetPath);
@@ -1117,6 +1135,7 @@
     state: function () {
       return {
         cash: state.cash, kills: state.kills, lives: state.lives, wave: state.wave,
+        settings: { difficulty: settings.difficulty, mode: settings.mode },
         enemies: state.enemies.map(function (e) {
           return { type: e.type, hp: e.hp, maxHp: e.maxHp, shield: e.shield, regen: e.regen, regenTimer: e.regenTimer, pathIndex: e.pathIndex, x: e.x, y: e.y };
         })
