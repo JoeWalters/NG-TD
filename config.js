@@ -19,6 +19,7 @@ const CONFIG = {
     BOSS_HP_MULT: 15,      // boss HP as a multiple of base enemy HP (×15)
     HP_PER_WAVE: 0.15,     // +15% enemy HP per wave
     COUNT_PER_WAVE: 2,     // +2 enemies per wave
+    WAVE_COUNT_CAP: 50,   // hard cap so past-preset (formula) waves do not explode
     WAVE_ENEMY_COUNT: 6,   // base enemies per wave
     SPAWN_INTERVAL: 0.9,   // seconds between spawns
     KILL_REWARD: 8,        // base cash earned per kill

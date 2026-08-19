@@ -36,6 +36,7 @@
   const WAVE_ENEMY_COUNT = CONFIG.BALANCE.WAVE_ENEMY_COUNT; // base enemies per wave
   const HP_PER_WAVE = CONFIG.BALANCE.HP_PER_WAVE;   // +15% enemy HP per wave
   const COUNT_PER_WAVE = CONFIG.BALANCE.COUNT_PER_WAVE; // +2 enemies per wave
+  const COUNT_CAP = CONFIG.BALANCE.WAVE_COUNT_CAP;      // cap on past-preset wave size
   const MAX_DT = CONFIG.BALANCE.MAX_DT;             // clamp dt on tab switch
 
   // Redirect tower tuning (single source of truth, see CONFIG.BALANCE).
@@ -246,7 +247,17 @@
     7: ['normal', 'tank', 'scout', 'normal', 'normal', 'scout', 'tank', 'normal', 'scout', 'normal', 'normal', 'tank', 'scout', 'normal', 'scout', 'normal', 'tank', 'scout'],
     8: ['shielded', 'scout', 'tank', 'shielded', 'normal', 'regener', 'tank', 'scout', 'normal', 'scout', 'regener', 'tank', 'scout', 'shielded', 'normal', 'tank', 'scout', 'scout', 'regener', 'tank'],
     9: ['normal', 'tank', 'scout', 'tank', 'normal', 'scout', 'normal', 'tank', 'scout', 'normal', 'scout', 'tank', 'normal', 'tank', 'scout', 'normal', 'scout', 'tank', 'normal', 'scout', 'tank', 'scout'],
-    10: ['boss', 'tank', 'tank', 'scout', 'normal', 'scout', 'tank', 'normal', 'scout', 'tank', 'scout', 'normal', 'tank', 'scout', 'normal', 'scout', 'tank', 'normal', 'scout', 'tank', 'scout', 'normal', 'tank', 'scout']
+    10: ['boss', 'tank', 'tank', 'scout', 'normal', 'scout', 'tank', 'normal', 'scout', 'tank', 'scout', 'normal', 'tank', 'scout', 'normal', 'scout', 'tank', 'normal', 'scout', 'tank', 'scout', 'normal', 'tank', 'scout'],
+      11: ['normal', 'tank', 'scout', 'normal', 'shielded', 'scout', 'tank', 'normal', 'regener', 'scout', 'normal', 'tank', 'scout', 'normal', 'shielded', 'scout', 'tank', 'normal'],
+      12: ['shielded', 'scout', 'regener', 'tank', 'normal', 'shielded', 'scout', 'tank', 'normal', 'regener', 'scout', 'shielded', 'tank', 'normal', 'scout', 'tank', 'regener', 'scout'],
+      13: ['normal', 'regener', 'tank', 'shielded', 'scout', 'regener', 'normal', 'tank', 'shielded', 'scout', 'normal', 'regener', 'tank', 'scout', 'shielded', 'normal', 'regener', 'scout'],
+      14: ['tank', 'shielded', 'scout', 'regener', 'normal', 'shielded', 'tank', 'scout', 'regener', 'normal', 'shielded', 'tank', 'scout', 'regener', 'normal', 'shielded', 'tank', 'scout'],
+      15: ['boss', 'tank', 'shielded', 'normal', 'tank', 'regener', 'scout', 'tank', 'shielded', 'normal', 'boss', 'tank', 'scout', 'normal', 'shielded', 'normal', 'tank', 'scout', 'normal'],
+      16: ['shielded', 'tank', 'regener', 'scout', 'normal', 'shielded', 'tank', 'regener', 'normal', 'shielded', 'scout', 'tank', 'regener', 'normal', 'shielded', 'scout', 'tank', 'normal', 'shielded', 'scout'],
+      17: ['normal', 'tank', 'scout', 'shielded', 'regener', 'normal', 'tank', 'regener', 'scout', 'shielded', 'normal', 'tank', 'scout', 'shielded', 'regener', 'normal', 'tank', 'scout', 'shielded', 'normal'],
+      18: ['tank', 'shielded', 'normal', 'scout', 'regener', 'shielded', 'tank', 'normal', 'regener', 'scout', 'tank', 'shielded', 'normal', 'regener', 'scout', 'tank', 'shielded', 'normal', 'scout', 'tank', 'shielded', 'normal'],
+      19: ['normal', 'tank', 'scout', 'shielded', 'regener', 'normal', 'tank', 'shielded', 'scout', 'regener', 'normal', 'tank', 'scout', 'shielded', 'regener', 'normal', 'tank', 'scout', 'shielded', 'regener', 'normal', 'shielded', 'tank'],
+      20: ['boss', 'tank', 'shielded', 'regener', 'normal', 'boss', 'tank', 'shielded', 'scout', 'normal', 'tank', 'boss', 'shielded', 'regener', 'scout', 'tank', 'normal', 'boss', 'shielded', 'tank', 'regener', 'normal', 'tank', 'boss']
   };
 
   // Flavor names for each wave, so each "pack" has a distinct identity that is
@@ -262,7 +273,17 @@
     7: 'Vanguard Swarm',
     8: 'Heavy Hitters',
     9: 'Rampage',
-    10: 'Titan Siege'
+    10: 'Titan Siege',
+    11: 'The Reckoning',
+    12: 'Serrated',
+    13: 'Renewal',
+    14: 'Berserker Swarm',
+    15: 'The Overlord',
+    16: 'The Armory',
+    17: 'Endless Night',
+    18: 'War March',
+    19: 'Slaughter',
+    20: 'The Fall'
   };
   function waveNameFor(wave) {
     return WAVE_NAMES[wave] || 'Wave ' + wave;
@@ -988,14 +1009,17 @@
     if (WAVE_PRESETS[wave]) return WAVE_PRESETS[wave].slice();
     // Fallback formula for waves past the last preset.
     const q = [];
-    const count = WAVE_ENEMY_COUNT + (wave - 1) * COUNT_PER_WAVE;
-    for (let i = 0; i < count; i++) {
-      let type = 'normal';
-      if (i === 0 && wave % 5 === 0) type = 'boss';
-      else if (wave >= 3 && i === 1) type = 'tank';
-      else if (wave >= 5 ? (i % 2 === 0) : (wave % 2 === 0 && i % 3 === 0)) type = 'scout';
-      q.push(type);
-    }
+  // Wave count grows but is capped so an endless run cant flood the grid.
+  const count = Math.min(WAVE_ENEMY_COUNT + (wave - 1) * COUNT_PER_WAVE, COUNT_CAP);
+  for (let i = 0; i < count; i++) {
+    let type = 'normal';
+    if (i === 0 && wave % 5 === 0) type = 'boss';
+    else if (wave % 7 === 0 && i === 1) type = 'regener';
+    else if (wave % 3 === 0 && i === 1) type = 'shielded';
+    else if (wave >= 3 && i === 1) type = 'tank';
+    else if (i % 2 === 0) type = 'scout';
+    q.push(type);
+  }
     return q;
   }
 
@@ -1102,7 +1126,8 @@
       return state.towers.map(function (t) {
         return { row: t.row, col: t.col, type: t.type, cooldown: t.cooldown };
       });
-    }
+    },
+    queueFor: function (wave) { return buildWaveQueue(wave); }
   };
 
   // ---------- Start the logic loop ----------
