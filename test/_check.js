@@ -4,34 +4,36 @@ let ok = true;
 const chk = (n,c)=>{ console.log((c?'PASS':'FAIL')+'  '+n); ok = ok && c; };
 
 lh.fire('td:restart',{}); lh.tick(0.02,1);
-const snap = lh.latestSnapshot(), grid = snap.grid;
-// empty tiles to work with
-const empties = [];
-for(let r=0;r<10;r++)for(let c=0;c<10;c++)if(grid[r*10+c]===0)empties.push([r,c]);
-
-const reasons = [];
-const tryBuild = (row,col,type) => {
-  const m = lh.emitted.length;
-  lh.fire('td:tower_placed',{row:row,col:col,type:type}); lh.tick(0.02,1);
-  const ev = lh.emitted.slice(m).find(e=>e.event==='td:build_failed');
-  if(ev) reasons.push(ev.detail.reason);
+const clearWave = ()=>{
+  const mark = lh.emitted.length;   // only accept wave_cleared emitted during THIS wave
+  dbg.setLives(999);
+  for(let f=0; f<4000; f++){
+    lh.tick(0.05,1);
+    if(lh.emitted.slice(mark).find(e=>e.event==='td:wave_cleared')) return;
+  }
 };
-// path tile: (0,4) is on the path (grid 1)
-tryBuild(0,4,'basic');
-// drain cash: build 4 basics on empty tiles
-for(let i=0;i<4 && empties[i];i++) lh.fire('td:tower_placed',{row:empties[i][0],col:empties[i][1],type:'basic'});
-lh.tick(0.02,1);
-tryBuild(empties[5][0], empties[5][1], 'basic');      // no cash
-// occupied: same tile as first built tower
-tryBuild(empties[0][0], empties[0][1], 'basic');
-chk('path-tile failure reported', reasons.includes('path'));
-chk('cash failure reported', reasons.includes('cash'));
-chk('occupied failure reported', reasons.includes('occupied'));
-// valid build (after restart with cash) should NOT emit build_failed
-const m2 = lh.emitted.length;
-lh.fire('td:restart',{}); lh.tick(0.02,1);
-const m3 = lh.emitted.length;
-lh.fire('td:tower_placed',{row:empties[0][0],col:empties[0][1],type:'basic'}); lh.tick(0.02,1);
-const ev2 = lh.emitted.slice(m3).find(e=>e.event==='td:build_failed');
-chk('valid build does NOT emit build_failed', !ev2);
-console.log(ok ? '\nITEM9 PASS' : '\nITEM9 FAIL');
+const offered = (wave)=>{
+  return lh.emitted.slice().reverse().some(e=>e.event==='td:wave_modifier_request' && e.detail.wave===wave);
+};
+const startMilestone = (wave, prev)=>{
+  dbg.setWave(prev); lh.fire('td:wave_started',{});
+  chk('wave '+wave+': offers (blocked until pick)', offered(wave) && dbg.state().wave===prev);
+  lh.fire('td:wave_modifier',{choice:'skip'}); lh.tick(0.02,1);
+  chk('wave '+wave+': starts after pick', dbg.state().wave===wave);
+  clearWave();
+};
+
+dbg.setWave(0); lh.fire('td:wave_started',{});
+chk('wave 1: no offer, starts', !offered(1) && dbg.state().wave===1);
+clearWave();
+
+startMilestone(5,4);
+dbg.setWave(5); lh.fire('td:wave_started',{});
+chk('wave 6: no offer, starts', !offered(6) && dbg.state().wave===6);
+clearWave();
+
+startMilestone(10,9);
+startMilestone(15,14);
+startMilestone(20,19);
+
+console.log(ok ? '\nGATE PASS' : '\nGATE FAIL');

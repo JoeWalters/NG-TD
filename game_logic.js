@@ -984,14 +984,17 @@
     if (waveActive) return; // only one wave at a time
 
   const queue = buildWaveQueue(state.wave + 1);
-  // Wave-choice gate: before starting ANY wave, offer the player a modifier
-  // pick (or Skip). Generalizes the old boss-only choice to every wave.
+  // Wave-choice gate: offer a modifier pick only on milestone waves (5/10/15/20),
+  // so the modal doesn't interrupt every single wave. Other waves start directly.
   if (waveModifier === null) {
-    emit(GAME_EVENTS.WAVE_MODIFIER_REQUEST, {
-      wave: state.wave + 1,
-      options: WAVE_MODIFIERS.map(function (m) { return { id: m.id, label: m.label, desc: m.desc }; })
-    });
-    return;
+    const nextWave = state.wave + 1;
+    if (nextWave % 5 === 0) {
+      emit(GAME_EVENTS.WAVE_MODIFIER_REQUEST, {
+        wave: nextWave,
+        options: WAVE_MODIFIERS.map(function (m) { return { id: m.id, label: m.label, desc: m.desc }; })
+      });
+      return;
+    }
   }
   
   beginWave();

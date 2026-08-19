@@ -85,9 +85,10 @@ Clearing a wave earns interest (5% of unspent cash, capped) from wave 2 onward,
 and the toast breaks income down into kills + kill-cash + interest.
 Creeps that leak cost lives by type: normal 1, tank 2, boss 5.
 
-Before every wave you pick a **modifier** that shapes it (or skip): **Frail**
-(every creep 60% HP), **Bounty** (every creep 200% HP, pays double), or **Reinforced**
-(every creep shielded). The choice applies to the whole wave, not just a boss.
+Before every **milestone wave** (5/10/15/20) you pick a **modifier** to shape it
+(or skip): **Frail** (every creep 60% HP), **Bounty** (every creep 200% HP, pays
+double), or **Reinforced** (every creep shielded). The choice applies to the whole
+wave, not just a boss; other waves start directly.
 
 ## Architecture
 
